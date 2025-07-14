@@ -26,11 +26,21 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json") \
     .select(from_json(col("json"), schema).alias("data")) \
     .select("data.*")
 
-# Step 4: Write output to console (can later write to storage or ML pipeline)
-query = df_parsed.writeStream \
+# Step 4a: Write to console (for dev/debugging)
+console_query = df_parsed.writeStream \
     .outputMode("append") \
     .format("console") \
     .option("truncate", False) \
     .start()
 
-query.awaitTermination()
+# Step 4b: Persist to Parquet (production-ready sink)
+parquet_query = df_parsed.writeStream \
+    .format("parquet") \
+    .option("path", "data/processed/") \
+    .option("checkpointLocation", "data/checkpoints/") \
+    .outputMode("append") \
+    .start()
+
+# Await termination of both sinks
+console_query.awaitTermination()
+parquet_query.awaitTermination()
