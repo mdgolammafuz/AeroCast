@@ -1,19 +1,60 @@
-# Python
-__pycache__/
-*.pyc
-
-# Virtual environment
+# 🧪 Virtual Environment
 venv/
 
-# Jupyter
-.ipynb_checkpoints/
-
-# OS
-.DS_Store
-
-# Logs
+# 🧹 Python Artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
 *.log
 
-# MLflow artifacts (optional later)
-mlruns/
+# 📦 Packaging & Build
+dist/
+build/
 
+# 🚫 OS Specific
+.DS_Store
+Thumbs.db
+
+# 🧰 Jupyter Notebooks Checkpoints
+.ipynb_checkpoints/
+
+# 🪵 Logs
+logs/
+*.log
+
+# 💾 Spark Artifacts
+artifacts/spark-*
+
+# 🗃️ Parquet & Spark Streaming Checkpoints
+data/processed/
+data/checkpoints/
+data/raw/
+
+# 🛠️ Docker Build Context (Optional)
+docker/kafka/kafka/logs/
+docker/kafka/kafka/data/
+
+# 🔍 ML Model Files
+model/*.pt
+model/*.pkl
+model/*.joblib
+
+# ⚠️ Misc Temp Files
+*.bak
+*.swp
+*.tmp
+*.temp
+*.old
+*.orig
+
+# 🗒️ VSCode (Optional, based on your editor)
+.vscode/
+
+# ⚙️ MacOS metadata
+*.DS_Store
+
+# ✅ If you want to track the README, leave it alone
+# README.md

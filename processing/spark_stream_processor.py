@@ -12,7 +12,9 @@ schema = StructType() \
 # Step 1: Create Spark Session
 spark = SparkSession.builder \
     .appName("KafkaSensorConsumer") \
+    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.0") \
     .getOrCreate()
+
 
 # Step 2: Read from Kafka topic 'weather-data'
 df_raw = spark.readStream \
@@ -36,8 +38,8 @@ console_query = df_parsed.writeStream \
 # Step 4b: Persist to Parquet (production-ready sink)
 parquet_query = df_parsed.writeStream \
     .format("parquet") \
-    .option("path", "data/processed/") \
-    .option("checkpointLocation", "data/checkpoints/") \
+    .option("path", "data/processed/weather/") \
+    .option("checkpointLocation", "data/checkpoints/weather/") \
     .outputMode("append") \
     .start()
 
