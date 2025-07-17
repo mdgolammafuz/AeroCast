@@ -27,6 +27,8 @@ def create_sequences(data, seq_len):
     return torch.tensor(X_seq, dtype=torch.float32), torch.tensor(y_seq, dtype=torch.float32)
 
 X_tensor, y_tensor = create_sequences(X, SEQ_LEN)
+# ✅ Add this line to understand data size
+print(f"📈 Total training sequences available: {len(X_tensor)}")
 
 # Step 5: Define Dataset
 class WeatherDataset(Dataset):
