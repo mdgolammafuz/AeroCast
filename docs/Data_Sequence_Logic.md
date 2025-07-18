@@ -49,7 +49,7 @@ Suppose `data` is:
 |10 |     28      |   61     |    0     |
 
 - `data[0:10]` → Picks rows : index 0 to 9 = input sequence `X_seq[0]` → shape: `[10, 3]`
-- `data[10][0]` → Picks row index 5 -> temperature on day 10 = target value `y_seq[0]`
+- `data[10][0]` → Picks row index 10 -> temperature on day 10 = target value `y_seq[0]`
 
 ---
 
