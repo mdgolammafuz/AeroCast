@@ -59,4 +59,7 @@ model/*.joblib
 # ✅ If you want to track the README, leave it alone
 !README.md
 # ✅ Track key documentation files
-!docs/*.md
+!docs/*.mdrequirement.txt
+
+# mlruns/ is a local experiment tracking log
+mlruns/
