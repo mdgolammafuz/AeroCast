@@ -1,0 +1,5 @@
+outs:
+- md5: 89b879b2782531227cc2fa3789fd4fea
+  size: 6985
+  hash: md5
+  path: gru_weather_forecaster.pt
