@@ -1,120 +1,133 @@
-# 🌾 AeroCast
+# 🌤️ AeroCast++: Real-Time Weather Forecasting Pipeline
 
-🚀 **Real-time Sensor Ingestion and Forecasting Pipeline for Agro-Climate Monitoring**
-
-AeroCast is a production-grade, modular data pipeline designed to simulate and process real-time IoT weather data for forecasting agro-climatic conditions. It integrates **Kafka**, **PySpark**, **GRU-based models**, **MLflow**, and **FastAPI** — making it suitable for real-world deployment in agriculture, climate risk, or smart irrigation systems.
+AeroCast++ is a production-grade, agentic forecasting system built with streaming ingestion (Kafka), PySpark-based batch processing, GRU sequence modeling, MLflow tracking, and DVC versioning — all orchestrated for real-time sensor data forecasting.
 
 ---
 
-## ✅ Key Features
+## 🧠 What Does AeroCast++ Do?
 
-- 🌦️ **Simulated Real-Time Sensor Data** (Temperature, Humidity, Rainfall)
-- 📡 **Kafka-based Ingestion Pipeline** (`producer.py`)
-- 🔥 **GRU-based Deep Learning Model** for Forecasting
-- ⚙️ **PySpark Consumer Pipeline** for Stream Processing
-- 📊 **MLflow Tracking** for Experiment Management
-- ⚡ **FastAPI Interface** to Serve Forecasts
-- 📈 **Grafana Monitoring** (Optional)
-- 🧪 **Modular Folder Structure** with Notebooks, Logs, Docker, and APIs
+It forecasts weather sensor values in real time by:
+- Ingesting sensor streams via Kafka
+- Processing and storing structured data
+- Training a GRU model for time series forecasting
+- Tracking experiments using MLflow
+- Versioning model artifacts using DVC
+- Serving forecasts via FastAPI (WIP)
 
 ---
 
-## 📁 Current Project Structure
+## 🔧 Core Technologies
+
+| Component     | Tech Stack                              |
+|--------------|------------------------------------------|
+| Ingestion     | Kafka, Simulated Sensor Streams         |
+| Processing    | PySpark, Parquet Pipelines              |
+| Modeling      | PyTorch GRU                             |
+| Monitoring    | Anomaly Detection + Grafana             |
+| Logging       | MLflow                                  |
+| Versioning    | DVC                                     |
+| Serving       | FastAPI (Coming Soon)                   |
+| Cloud         | Azure Event Hub (Optional Integration)  |
+
+---
+
+## 📁 Folder Structure
 
 ```bash
 .
-├── api/
-├── artifacts/
-├── cloud/
-├── data/
-├── datasets/
-├── docker/
-├── docs/
-├── ingestion/
-├── logs/
-├── model/
-├── monitoring/
-├── notebooks/
-├── processing/
-├── requirements.txt
-├── scripts/
-├── serving/
-├── streaming/
-├── tests/
-├── training/
 ├── README.md
+├── api
+├── artifacts
+│   └── gru_weather_forecaster.pt
+├── cloud
+│   └── azure_eventhub_config.py
+├── data
+│   ├── checkpoints
+│   ├── parquet_loader.py
+│   ├── processed
+│   ├── raw
+│   └── simulator.py
+├── datasets
+│   ├── processed
+│   └── raw
+├── docker
+│   └── kafka
+├── docs
+│   ├── Data_Sequence_Logic.md
+│   ├── GRU_Module_Architecture.md
+│   ├── Live_Prediction_Test.md
+│   ├── README_GRU.md
+│   ├── RealTime_Predictor_Loop.md
+│   ├── kafka_startup.md
+│   ├── live_prediction_with_anomaly.md
+│   ├── mlflow_integration_explained.md
+│   ├── mlflow_loss_curve.png
+│   ├── mlflow_run_summary.png
+│   └── dvc_integration_explained.md
+├── ingestion
+├── logs
+├── model
+│   └── __init__.py
+├── monitoring
+│   ├── __init__.py
+│   ├── anomaly_detector.py
+│   └── mlflow_tracking
+├── notebooks
+├── processing
+├── requirements.txt
+├── scripts
+│   └── kafka_startup.md
+├── serving
+│   └── fastapi_app.py
+├── simulator
+├── streaming
+│   ├── ingestion
+│   └── processing
+├── tests
+│   ├── gru_hook_debug.py
+│   ├── live_predictor.py
+│   └── parquet_preview.py
+├── training
+│   ├── mlflow_gru_train.py
+│   └── train_gru.py
+└── venv/ and mlruns/ excluded via .gitignore
 ```
-    
 
-🛠️ Tools & Technologies
-| Component     | Technology                           |
-| ------------- | ------------------------------------ |
-| Ingestion     | `Kafka` + `kafka-python`             |
-| Processing    | `PySpark`                            |
-| Modeling      | `TensorFlow/Keras (GRU)`             |
-| Serving       | `FastAPI`                            |
-| Tracking      | `MLflow`                             |
-| Monitoring    | `Grafana`                            |
-| Notebook/Dev  | `JupyterLab`, `VSCode`, `virtualenv` |
-| Infra (Local) | `Docker` + `Homebrew` (Mac)          |
-
-🚧 Current Progress
-✅ Kafka Installed and Running Locally
-
-✅ Zookeeper Running
-
-✅ Kafka Topic weather-data Created
-
-✅ Sensor Stream Simulation Implemented in producer.py
-
-✅ Folder Structure Modularized
-
-✅ GitHub Repo Initialized
-
-✅ Grafana, FastAPI, and MLflow Installed
-
-🔜 Spark Consumer & GRU Model Training Pipeline Next
-
-📌 Demo Snapshot
-📡 Real-time sensor data being published to Kafka:
-Sending: {
-  "timestamp": "2025-07-14T11:07:31.419154",
-  "temperature": 33.76,
-  "humidity": 50.37,
-  "rainfall": 9.53
-}
-
-🔄 How to Run the Kafka Producer
-cd ingestion
-python producer.py
-
-🌐 Planned Features
-
-    🔄 Stream Processing with PySpark
-
-    📈 GRU Model Training on Real/Synthetic Sequences
-
-    📤 FastAPI Interface with Forecast Route
-
-    📉 MLflow Logging of Model Metrics
-
-    📺 Grafana Dashboards for Sensor & Forecast Monitoring
 ---
 
 ## 📊 MLflow Integration
 
-We have cleanly integrated MLflow for experiment tracking and visualization.
+We integrated MLflow to track GRU training runs, log parameters, loss metrics, and visualize training progress.
 
-🔍 See: [docs/mlflow_integration_explained.md](docs/mlflow_integration_explained.md)
+📄 [See MLflow Execution Details →](docs/mlflow_integration_explained.md)
 
-Includes screenshots of:
-- Run Summary Page (`mlflow_run_summary.png`)
-- Loss Curve View (`mlflow_loss_curve.png`)
+---
 
-📣 Author
-MD Golam Mafuz
-Aspiring Data Engineer & AI/ML Engineer
-🔗 LinkedIn | GitHub
+## 🧬 DVC Versioning
 
-📌 License
-MIT License. This is a learning + deployment showcase project.
+Model artifacts (like trained GRU weights) are version-controlled with DVC, ensuring reproducibility and modularity.
+
+📄 [See DVC Setup Details →](docs/dvc_integration_explained.md)
+
+---
+
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="docs/mlflow_loss_curve.png" alt="Loss Curve" width="60%">
+</p>
+
+<p align="center">
+  <img src="docs/mlflow_run_summary.png" alt="Run Summary" width="60%">
+</p>
+
+---
+
+## 🚀 Next Steps
+
+- ✅ GRU + MLflow + DVC (DONE!)
+- 🔄 Integrate FastAPI for serving
+- 📈 Real-time inference + drift detection
+- 📊 Grafana dashboard
+
+
