@@ -22,27 +22,29 @@ AeroCast is a production-grade, modular data pipeline designed to simulate and p
 ## 📁 Current Project Structure
 
 ```bash
-AeroCast/
-├── README.md
+.
 ├── api/
-│   └── main.py
+├── artifacts/
+├── cloud/
 ├── data/
-│   ├── processed/
-│   └── raw/
+├── datasets/
 ├── docker/
-│   └── kafka/
+├── docs/
 ├── ingestion/
-│   └── producer.py
 ├── logs/
 ├── model/
-│   └── train_gru.py
 ├── monitoring/
-│   └── mlflow_tracking/
 ├── notebooks/
 ├── processing/
-│   └── spark_stream_processor.py
-├── venv/  # Local virtual environment
-
+├── requirements.txt
+├── scripts/
+├── serving/
+├── streaming/
+├── tests/
+├── training/
+├── README.md
+```
+    
 
 🛠️ Tools & Technologies
 | Component     | Technology                           |
@@ -97,7 +99,17 @@ python producer.py
     📉 MLflow Logging of Model Metrics
 
     📺 Grafana Dashboards for Sensor & Forecast Monitoring
+---
 
+## 📊 MLflow Integration
+
+We have cleanly integrated MLflow for experiment tracking and visualization.
+
+🔍 See: [docs/mlflow_integration_explained.md](docs/mlflow_integration_explained.md)
+
+Includes screenshots of:
+- Run Summary Page (`mlflow_run_summary.png`)
+- Loss Curve View (`mlflow_loss_curve.png`)
 
 📣 Author
 MD Golam Mafuz
