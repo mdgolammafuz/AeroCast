@@ -123,10 +123,38 @@ Model artifacts (like trained GRU weights) are version-controlled with DVC, ensu
 
 ---
 
-## 🚀 Next Steps
+## ⚙️ FastAPI Serving
 
-- ✅ GRU + MLflow + DVC (DONE!)
-- 🔄 Integrate FastAPI for serving
+We expose the GRU model via a FastAPI `/predict` endpoint.
+We now serve the trained GRU model through a FastAPI endpoint:
+
+- ✅ Loads the GRU `.pt` weights once at startup
+- ✅ `/predict` POST endpoint with strict Pydantic validation (`Field(...)`)
+- ✅ Swagger UI auto-generated docs at `/docs`
+- ✅ Clear error handling (`HTTPException`) for bad inputs
+- ✅ Tested via `curl` and live Swagger console
+
+
+📄 [Serving API Explained →](docs/serving_api_explained.md)  
+📄 [Input Validation with `Field` →](docs/input_validation_with_field.md)
+
+### ▶️ Run & Test
+
+```bash
+uvicorn serving.fastapi_app:app --reload
+```
+
+Swagger UI: http://127.0.0.1:8000/docs
+
+```bash
+curl -X POST "http://127.0.0.1:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{"sequence": [[22.3], [22.1], [21.9], [22.0], [22.4]]}'
+```
+
+---
+
+## 🚀 Next Steps
 - 📈 Real-time inference + drift detection
 - 📊 Grafana dashboard
 
