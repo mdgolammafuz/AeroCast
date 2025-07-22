@@ -1,5 +1,5 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 from typing import List
 import torch
 import torch.nn as nn
@@ -32,32 +32,49 @@ model.load_state_dict(torch.load("artifacts/gru_weather_forecaster.pt"))
 model.eval()
 
 # -----------------------------
-# Define FastAPI app
+# Initialize FastAPI App
 # -----------------------------
-app = FastAPI()
+app = FastAPI(
+    title="AeroCast++ GRU Forecasting API",
+    description="Serve real-time weather predictions using a trained GRU model.",
+    version="1.0.0"
+)
 
 # -----------------------------
-# Define Pydantic Input Schema
+# Pydantic Input Schema with Validation
 # -----------------------------
 class WeatherInput(BaseModel):
-    sequence: List[List[float]]
+    sequence: List[List[float]] = Field(
+        ...,
+        title="Sensor Input Sequence",
+        description="2D list representing weather sensor time series: shape (seq_len, 1)",
+        example=[[22.3], [22.1], [21.9], [22.0], [22.4]],
+        min_items=5
+    )
 
 # -----------------------------
-# Root Endpoint for Health
+# Root Health Check
 # -----------------------------
-@app.get("/")
+@app.get("/", summary="Health Check")
 def read_root():
-    return {"message": "AeroCast++ GRU Predictor is running!"}
+    return {"message": "✅ AeroCast++ GRU Predictor is Live"}
 
 # -----------------------------
 # Prediction Endpoint
 # -----------------------------
-@app.post("/predict")
+@app.post("/predict", summary="Generate Weather Forecast")
 def predict(data: WeatherInput):
-    sequence = np.array(data.sequence, dtype=np.float32)
-    sequence_tensor = torch.tensor(sequence).unsqueeze(0)  # shape: (1, seq_len, input_dim)
-    
-    with torch.no_grad():
-        forecast = model(sequence_tensor).item()
+    try:
+        sequence = np.array(data.sequence, dtype=np.float32)  # (seq_len, 1)
+        sequence_tensor = torch.tensor(sequence).unsqueeze(0)  # (1, seq_len, 1)
 
-    return {"forecast": forecast}
+        with torch.no_grad():
+            forecast = model(sequence_tensor).item()
+
+        return {
+            "input_length": len(sequence),
+            "forecast": round(forecast, 2)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
