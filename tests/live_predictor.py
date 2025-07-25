@@ -7,7 +7,7 @@ import time
 import pandas as pd
 import torch
 from model.train_gru import GRURegressor
-from monitoring.point_anomaly import is_anomalous 
+from monitoring.point_anomaly import is_point_anomaly
 
 SEQ_LEN = 10
 features = ["temperature", "humidity", "rainfall"]
@@ -39,7 +39,7 @@ while True:
             prediction = model(X_live).item()
 
         # Anomaly check
-        if is_anomalous(prediction, previous_pred):
+        if is_point_anomaly(prediction, previous_pred):
             print(f"Anomaly Detected → Prediction jumped to {prediction:.2f}°C")
         else:
             print(f"Predicted next temperature → {prediction:.2f}°C")

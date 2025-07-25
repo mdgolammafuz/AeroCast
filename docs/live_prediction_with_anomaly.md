@@ -29,7 +29,7 @@ Each loop:
 ### ✅ Modular Imports
 ```python
 from model.train_gru import GRURegressor
-from monitoring.anomaly_detector import is_anomalous
+from monitoring.anomaly_detector import is_point_anomaly
 ```
 
 ### ✅ Sequence Loader

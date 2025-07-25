@@ -70,7 +70,7 @@ It forecasts weather sensor values in real time by:
 │   └── __init__.py
 ├── monitoring
 │   ├── __init__.py
-│   ├── anomaly_detector.py
+│   ├── point_anomaly.py
 │   └── mlflow_tracking
 ├── notebooks
 ├── processing
