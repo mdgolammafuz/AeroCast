@@ -6,8 +6,21 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import mlflow
 import os
+from datetime import datetime
 
-# ----- Config -----
+# ----- Drift Hook Config -----
+FLAG_PATH = "retrain.flag"
+LOG_PATH = "logs/drift.log"
+
+def check_and_reset_flag():
+    if os.path.exists(FLAG_PATH):
+        with open(LOG_PATH, "a") as f:
+            f.write(f"[{datetime.now()}] Retraining triggered by drift detection.\n")
+        os.remove(FLAG_PATH)
+        return True
+    return False
+
+# ----- Training Config -----
 SEQ_LENGTH = 5
 BATCH_SIZE = 2
 EPOCHS = 5
@@ -31,7 +44,7 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-# ----- Model -----
+# ----- Model Definition -----
 class GRUForecaster(nn.Module):
     def __init__(self, input_dim=1, hidden_dim=HIDDEN_DIM, output_dim=1):
         super().__init__()
@@ -81,5 +94,9 @@ def run_training():
         torch.save(model.state_dict(), model_path)
         mlflow.log_artifact(model_path)
 
+# ----- Hook Entry Point -----
 if __name__ == "__main__":
+    if not check_and_reset_flag():
+        print("No drift flag found. Skipping retraining.")
+        exit()
     run_training()
