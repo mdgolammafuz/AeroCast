@@ -13,6 +13,6 @@ if not files:
     print("No parquet files found.")
 else:
     latest_file = os.path.join(parquet_folder, files[0])
-    print(f"\n📂 Previewing file: {latest_file}\n")
+    print(f"\nPreviewing file: {latest_file}\n")
     df = pd.read_parquet(latest_file)
     print(df.head())

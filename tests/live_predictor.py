@@ -7,7 +7,7 @@ import time
 import pandas as pd
 import torch
 from model.train_gru import GRURegressor
-from monitoring.anomaly_detector import is_anomalous  # ✅ NEW
+from monitoring.point_anomaly import is_anomalous 
 
 SEQ_LEN = 10
 features = ["temperature", "humidity", "rainfall"]
@@ -28,9 +28,9 @@ model = GRURegressor(input_dim=3, hidden_dim=64, output_dim=1)
 model.load_state_dict(torch.load("model/gru_weather_forecaster.pt"))
 model.eval()
 
-print("🔁 Starting real-time prediction loop...\n")
+print("Starting real-time prediction loop...\n")
 
-previous_pred = None  # ✅ NEW
+previous_pred = None 
 
 while True:
     try:
@@ -38,15 +38,15 @@ while True:
         with torch.no_grad():
             prediction = model(X_live).item()
 
-        # ✅ Anomaly check
+        # Anomaly check
         if is_anomalous(prediction, previous_pred):
-            print(f"🚨 Anomaly Detected → Prediction jumped to {prediction:.2f}°C")
+            print(f"Anomaly Detected → Prediction jumped to {prediction:.2f}°C")
         else:
-            print(f"🌡️ Predicted next temperature → {prediction:.2f}°C")
+            print(f"Predicted next temperature → {prediction:.2f}°C")
 
         previous_pred = prediction
 
     except Exception as e:
-        print(f"⚠️ Prediction skipped due to error: {e}")
+        print(f"Prediction skipped due to error: {e}")
 
     time.sleep(5)
