@@ -37,7 +37,7 @@ docker/kafka/kafka/data/
 model/*.pt
 model/*.pkl
 model/*.joblib
-#artifacts/
+artifacts/
 checkpoints/
 *.pt
 *.pth
