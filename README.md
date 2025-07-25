@@ -1,10 +1,10 @@
-# 🌤️ AeroCast++: Real-Time Weather Forecasting Pipeline
+# AeroCast++: Real-Time Weather Forecasting Pipeline
 
 AeroCast++ is a production-grade, agentic forecasting system built with streaming ingestion (Kafka), PySpark-based batch processing, GRU sequence modeling, MLflow tracking, and DVC versioning — all orchestrated for real-time sensor data forecasting.
 
 ---
 
-## 🧠 What Does AeroCast++ Do?
+## What Does AeroCast++ Do?
 
 It forecasts weather sensor values in real time by:
 - Ingesting sensor streams via Kafka
@@ -31,7 +31,7 @@ It forecasts weather sensor values in real time by:
 
 ---
 
-## 📁 Folder Structure
+## Folder Structure
 
 ```bash
 .
@@ -95,23 +95,23 @@ It forecasts weather sensor values in real time by:
 
 ---
 
-## 📊 MLflow Integration
+## MLflow Integration
 
 We integrated MLflow to track GRU training runs, log parameters, loss metrics, and visualize training progress.
 
-📄 [See MLflow Execution Details →](docs/mlflow_integration_explained.md)
+[See MLflow Execution Details →](docs/mlflow_integration_explained.md)
 
 ---
 
-## 🧬 DVC Versioning
+## DVC Versioning
 
 Model artifacts (like trained GRU weights) are version-controlled with DVC, ensuring reproducibility and modularity.
 
-📄 [See DVC Setup Details →](docs/dvc_integration_explained.md)
+[See DVC Setup Details →](docs/dvc_integration_explained.md)
 
 ---
 
-## 🖼️ Screenshots
+## Screenshots
 
 <p align="center">
   <img src="docs/mlflow_loss_curve.png" alt="Loss Curve" width="60%">
@@ -123,22 +123,22 @@ Model artifacts (like trained GRU weights) are version-controlled with DVC, ensu
 
 ---
 
-## ⚙️ FastAPI Serving
+## FastAPI Serving
 
 We expose the GRU model via a FastAPI `/predict` endpoint.
 We now serve the trained GRU model through a FastAPI endpoint:
 
-- ✅ Loads the GRU `.pt` weights once at startup
-- ✅ `/predict` POST endpoint with strict Pydantic validation (`Field(...)`)
-- ✅ Swagger UI auto-generated docs at `/docs`
-- ✅ Clear error handling (`HTTPException`) for bad inputs
-- ✅ Tested via `curl` and live Swagger console
+- Loads the GRU `.pt` weights once at startup
+- `/predict` POST endpoint with strict Pydantic validation (`Field(...)`)
+- Swagger UI auto-generated docs at `/docs`
+- Clear error handling (`HTTPException`) for bad inputs
+- Tested via `curl` and live Swagger console
 
 
-📄 [Serving API Explained →](docs/serving_api_explained.md)  
-📄 [Input Validation with `Field` →](docs/input_validation_with_field.md)
+[Serving API Explained →](docs/serving_api_explained.md)  
+[Input Validation with `Field` →](docs/input_validation_with_field.md)
 
-### ▶️ Run & Test
+### Run & Test
 
 ```bash
 uvicorn serving.fastapi_app:app --reload
@@ -154,8 +154,18 @@ curl -X POST "http://127.0.0.1:8000/predict" \
 
 ---
 
-## 🚀 Next Steps
-- 📈 Real-time inference + drift detection
-- 📊 Grafana dashboard
+## Drift Detection + Auto-Retraining
+
+AeroCast++ includes a lightweight drift detection mechanism that monitors model predictions during real-time inference.
+
+- Computes rolling prediction error (e.g., MAE).
+- Flags retraining when error exceeds a threshold.
+- Retrains GRU model automatically using `mlflow_gru_train.py`.
+
+[See Drift Detection Logic →](docs/README_drift_autoretrain.md)
+
+
+## Next Steps
+- Grafana dashboard
 
 
