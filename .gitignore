@@ -1,7 +1,7 @@
-# 🧪 Virtual Environment
+# Virtual Environment
 venv/
 
-# 🧹 Python Artifacts
+# Python Artifacts
 __pycache__/
 *.py[cod]
 *.pyo
@@ -10,39 +10,40 @@ __pycache__/
 *.egg
 *.log
 
-# 📦 Packaging & Build
+# Packaging & Build
 dist/
 build/
 
-# 🚫 OS Specific
+# OS Specific
 .DS_Store
 Thumbs.db
 
-# 🧰 Jupyter Notebooks Checkpoints
+# Jupyter Notebooks Checkpoints
 .ipynb_checkpoints/
 
-# 🪵 Logs
-logs/
-*.log
-
-# 💾 Spark Artifacts
+# Spark Artifacts
 artifacts/spark-*
 
-# 🗃️ Parquet & Spark Streaming Checkpoints
+# Parquet & Spark Streaming Checkpoints
 data/processed/
 data/checkpoints/
 data/raw/
 
-# 🛠️ Docker Build Context (Optional)
+# Docker Build Context (Optional)
 docker/kafka/kafka/logs/
 docker/kafka/kafka/data/
 
-# 🔍 ML Model Files
+# ML Model Files
 model/*.pt
 model/*.pkl
 model/*.joblib
+#artifacts/
+checkpoints/
+*.pt
+*.pth
 
-# ⚠️ Misc Temp Files
+
+# Misc Temp Files
 *.bak
 *.swp
 *.tmp
@@ -50,16 +51,25 @@ model/*.joblib
 *.old
 *.orig
 
-# 🗒️ VSCode (Optional, based on your editor)
+# VSCode (Optional, based on your editor)
 .vscode/
 
-# ⚙️ MacOS metadata
+# MacOS metadata
 *.DS_Store
 
-# ✅ If you want to track the README, leave it alone
+# If you want to track the README, leave it alone
 !README.md
-# ✅ Track key documentation files
+# Track key documentation files
 !docs/*.mdrequirement.txt
 
 # mlruns/ is a local experiment tracking log
 mlruns/
+
+# Logs and drift flags
+logs/
+*.log
+retrain.flag
+
+# DVC cache (optional if remote used)
+.dvc/
+.dvc/cache/

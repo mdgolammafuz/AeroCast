@@ -25,7 +25,7 @@ def generate_sensor_data():
     }
 
 if __name__ == "__main__":
-    print(f"🚀 Sending data to Kafka topic '{KAFKA_TOPIC}'... (Press CTRL+C to stop)")
+    print(f"Sending data to Kafka topic '{KAFKA_TOPIC}'... (Press CTRL+C to stop)")
     try:
         while True:
             message = generate_sensor_data()
@@ -33,4 +33,4 @@ if __name__ == "__main__":
             producer.send(KAFKA_TOPIC, message)
             time.sleep(3)  # simulate every 3 seconds
     except KeyboardInterrupt:
-        print("\n🛑 Stopped streaming.")
+        print("\n Stopped streaming.")
