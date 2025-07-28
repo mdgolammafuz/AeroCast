@@ -73,3 +73,8 @@ retrain.flag
 # DVC cache (optional if remote used)
 .dvc/
 .dvc/cache/
+
+# Ignore Prometheus runtime storage
+data/chunks_head/
+data/wal/
+data/queries.active
