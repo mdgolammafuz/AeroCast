@@ -1,102 +1,64 @@
-# training/mlflow_gru_train.py
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import numpy as np
-import torch
+import pandas as pd, torch, mlflow, datetime
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import mlflow
-import os
-from datetime import datetime
+from model.gru_model import GRUWeatherForecaster
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+from mlflow.models.signature import infer_signature
 
-# ----- Drift Hook Config -----
-FLAG_PATH = "retrain.flag"
-LOG_PATH = "logs/drift.log"
+CSV       = "data/training_data.csv"
+FLAG      = "retrain.flag"
+registry  = CollectorRegistry()
+LOSS_GAUGE= Gauge("training_loss", "GRU loss", ["epoch","reason"], registry=registry)
 
-def check_and_reset_flag():
-    if os.path.exists(FLAG_PATH):
-        with open(LOG_PATH, "a") as f:
-            f.write(f"[{datetime.now()}] Retraining triggered by drift detection.\n")
-        os.remove(FLAG_PATH)
-        return True
-    return False
+class TS(Dataset):
+    def __init__(self, path):
+        df = pd.read_csv(path).astype("float32")
+        self.X = torch.tensor(df.values[:,:-1]).unsqueeze(-1)
+        self.y = torch.tensor(df.values[:,-1]).unsqueeze(-1)
+    def __len__(self): return len(self.X)
+    def __getitem__(s,i): return s.X[i], s.y[i]
 
-# ----- Training Config -----
-SEQ_LENGTH = 5
-BATCH_SIZE = 2
-EPOCHS = 5
-HIDDEN_DIM = 16
-LR = 0.01
+def reason():
+    if os.path.exists(FLAG):
+        os.remove(FLAG); return "drift"
+    return "initial"
 
-# ----- Simulate Minimal Data -----
-series = np.array([i * 0.1 for i in range(20)])  # 0.0 to 1.9
-X = np.array([series[i:i+SEQ_LENGTH] for i in range(len(series)-SEQ_LENGTH)])
-y = np.array([series[i+SEQ_LENGTH] for i in range(len(series)-SEQ_LENGTH)])
+def train():
+    rsn = reason()
+    mlflow.set_experiment("AeroCast-GRU")
+    mlflow.pytorch.autolog(log_models=False)
 
-# ----- Dataset Wrapper -----
-class TimeSeriesDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.tensor(X, dtype=torch.float32).unsqueeze(-1)
-        self.y = torch.tensor(y, dtype=torch.float32).unsqueeze(-1)
+    ds = TS(CSV)
+    loader = DataLoader(ds, batch_size=2, shuffle=True)
 
-    def __len__(self):
-        return len(self.X)
+    model = GRUWeatherForecaster(1,16,1)
+    opt   = torch.optim.Adam(model.parameters(), lr=0.01)
+    lossf = nn.MSELoss()
 
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
-
-# ----- Model Definition -----
-class GRUForecaster(nn.Module):
-    def __init__(self, input_dim=1, hidden_dim=HIDDEN_DIM, output_dim=1):
-        super().__init__()
-        self.gru = nn.GRU(input_dim, hidden_dim, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        _, h_n = self.gru(x)
-        out = self.fc(h_n[-1])
-        return out
-
-# ----- Training Loop -----
-def train_one_epoch(model, loader, loss_fn, optimizer):
-    model.train()
-    total_loss = 0
-    for X_batch, y_batch in loader:
-        optimizer.zero_grad()
-        output = model(X_batch)
-        loss = loss_fn(output, y_batch)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-    return total_loss / len(loader)
-
-# ----- MLflow Logging -----
-def run_training():
-    dataset = TimeSeriesDataset(X, y)
-    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-    model = GRUForecaster()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    loss_fn = nn.MSELoss()
-
-    mlflow.set_experiment("AeroCast-GRU-Training")
     with mlflow.start_run():
-        mlflow.log_param("hidden_dim", HIDDEN_DIM)
-        mlflow.log_param("lr", LR)
-        mlflow.log_param("seq_length", SEQ_LENGTH)
+        mlflow.set_tag("run_reason", rsn)
 
-        for epoch in range(EPOCHS):
-            epoch_loss = train_one_epoch(model, loader, loss_fn, optimizer)
+        for epoch in range(5):
+            model.train(); tot=0
+            for X,y in loader:
+                opt.zero_grad(); out=model(X); loss=lossf(out,y)
+                loss.backward(); opt.step(); tot+=loss.item()
+            epoch_loss = tot/len(loader)
             mlflow.log_metric("loss", epoch_loss, step=epoch)
-            print(f"Epoch {epoch+1}, Loss: {epoch_loss:.4f}")
 
-        # Save model
-        os.makedirs("artifacts", exist_ok=True)
-        model_path = "artifacts/gru_weather_forecaster.pt"
-        torch.save(model.state_dict(), model_path)
-        mlflow.log_artifact(model_path)
+            LOSS_GAUGE.labels(str(epoch), rsn).set(epoch_loss)
+            push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
 
-# ----- Hook Entry Point -----
+        # Add model logging with input_example and signature
+        X_sample, _ = next(iter(loader))
+        signature = infer_signature(X_sample.numpy(), model(X_sample).detach().numpy())
+        mlflow.pytorch.log_model(model, "model", input_example=X_sample.numpy(), signature=signature)
+
+        mlflow.register_model(f"runs:/{mlflow.active_run().info.run_id}/model",
+                              "AeroCast-GRU-Model")
+
 if __name__ == "__main__":
-    if not check_and_reset_flag():
-        print("No drift flag found. Skipping retraining.")
-        exit()
-    run_training()
+    train()
