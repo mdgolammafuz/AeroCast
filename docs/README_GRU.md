@@ -1,26 +1,26 @@
 
-# 🌦️ GRU Weather Forecaster – Internal Module of AeroCast++
+# GRU Weather Forecaster – Internal Module of AeroCast++
 
 > Predicting tomorrow’s temperature using 10 days of weather sequences  
 > Powered by PyTorch GRU | Deployed as part of AeroCast’s real-time forecasting pipeline
 
 ---
 
-## 🧠 Mental Model: How GRU Thinks
+## Mental Model: How GRU Thinks
 
 Imagine GRU as a **meteorologist with short-term memory**.
 
 - It looks at **last 10 days** of weather:
-  - 🌡️ Temperature
-  - 💧 Humidity
-  - ☔ Rainfall
+  - Temperature
+  - Humidity
+  - Rainfall
 - It learns **patterns** like:
   - "If it rained and humidity spiked, tomorrow is cooler."
 - Then it **predicts** the next day’s temperature 📈
 
 ---
 
-## 🧮 Input Format: Shape Breakdown
+## Input Format: Shape Breakdown
 
 Let’s decode how the GRU reads the input:
 
@@ -39,9 +39,9 @@ y_tensor.shape  # [974]
 
 ---
 
-## 🔁 GRU Internal Flow (Forward Pass)
+## GRU Internal Flow (Forward Pass)
 
-### 🔷 Symbolic Diagram
+### Symbolic Diagram
 
 ```
 Input: [10 days × 3 features]
@@ -55,7 +55,7 @@ Fully Connected Layer (fc → output_dim=1)
 Output: Temperature for Day 11
 ```
 
-### 🔧 Code Behind the Flow:
+### Code Behind the Flow:
 
 ```python
 out, _ = self.gru(x)          # out shape: [batch, seq_len, hidden_dim]
@@ -67,7 +67,7 @@ Why `out[:, -1, :]`?
 
 ---
 
-## 🧼 Why `.squeeze()` in Training?
+## Why `.squeeze()` in Training?
 
 In training loop:
 ```python
@@ -78,11 +78,11 @@ This removes extra dimension `[batch_size, 1] → [batch_size]` so that it match
 
 ---
 
-## 📦 Output Interpretation
+## Output Interpretation
 
 Final output:
 ```python
-🌡️  Next predicted temperature: 12.79 (in °C)
+   Next predicted temperature: 12.79 (in °C)
 ```
 
 Used for:
@@ -92,12 +92,12 @@ Used for:
 
 ---
 
-## 🧱 Integration in AeroCast++
+## Integration in AeroCast++
 
 This GRU engine is used in:
-- 🔄 Live forecast prediction (via `gru_hook_debug.py`)
-- ⚙️ `model/train_gru.py` handles training + saving `.pt`
-- 🧪 Unit testing enabled via debug hooks
+- Live forecast prediction (via `gru_hook_debug.py`)
+- `model/train_gru.py` handles training + saving `.pt`
+- Unit testing enabled via debug hooks
 - Future: Used inside FastAPI (`api/main.py`) for serving prediction endpoint
 
 ---

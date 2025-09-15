@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'aerocast-fastapi'
+    static_configs:
+      - targets: ['localhost:8000']
+
+  - job_name: 'pushgateway'
+    static_configs:
+      - targets: ['localhost:9091']
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

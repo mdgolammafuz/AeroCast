@@ -52,7 +52,11 @@ def train():
             LOSS_GAUGE.labels(str(epoch), rsn).set(epoch_loss)
             push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
 
-        # Add model logging with input_example and signature
+        # --- Save weights for FastAPI serving ---
+        os.makedirs("artifacts", exist_ok=True)
+        torch.save(model.state_dict(), "artifacts/gru_weather_forecaster.pt")
+
+        # MLflow model logging + signature
         X_sample, _ = next(iter(loader))
         signature = infer_signature(X_sample.numpy(), model(X_sample).detach().numpy())
         mlflow.pytorch.log_model(model, "model", input_example=X_sample.numpy(), signature=signature)

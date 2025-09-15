@@ -1,21 +1,21 @@
-# 📦 DVC Integration in AeroCast++
+# DVC Integration in AeroCast++
 
 This document explains how **DVC (Data Version Control)** was integrated into the GRU pipeline in **AeroCast++**, enabling model versioning and large file tracking in a professional, Git-friendly way.
 
 ---
 
-## 🚀 Why We Use DVC
+## Why We Use DVC
 
-- 🔁 Track large files (e.g., `.pt` model files) without polluting Git
-- 🧠 Enable experiment reproducibility
-- ☁️ Prepare for remote storage (e.g., S3, GDrive, Azure Blob)
-- 📊 Integrate with MLflow and pipelines for true MLOps
+- Track large files (e.g., `.pt` model files) without polluting Git
+- Enable experiment reproducibility
+- Prepare for remote storage (e.g., S3, GDrive, Azure Blob)
+- Integrate with MLflow and pipelines for true MLOps
 
 ---
 
-## 🧰 Step-by-Step Integration Summary
+## Step-by-Step Integration Summary
 
-### ✅ 1. Initialize DVC
+### 1. Initialize DVC
 
 ```bash
 dvc init
@@ -25,7 +25,7 @@ Creates `.dvc/`, `.dvcignore`, and adds to Git.
 
 ---
 
-### 📦 2. Track the GRU Model
+### 2. Track the GRU Model
 
 ```bash
 dvc add artifacts/gru_weather_forecaster.pt
@@ -48,12 +48,12 @@ Then commit:
 
 ```bash
 git add artifacts/gru_weather_forecaster.pt.dvc artifacts/.gitignore
-git commit -m "🔄 Track GRU model with DVC"
+git commit -m "Track GRU model with DVC"
 ```
 
 ---
 
-## 🧠 What is `.dvcignore`?
+## What is `.dvcignore`?
 
 Similar to `.gitignore`, but used by DVC to skip scanning unnecessary files during `dvc add` or pipeline operations.
 
@@ -61,7 +61,7 @@ Similar to `.gitignore`, but used by DVC to skip scanning unnecessary files duri
 
 ---
 
-## 📂 Directory Snapshot
+## Directory Snapshot
 
 ```
 artifacts/
@@ -75,7 +75,7 @@ artifacts/
 
 ---
 
-## 🧪 Summary
+## Summary
 
 | Tool | Tracks | Commits to Git? |
 |------|--------|-----------------|
@@ -86,7 +86,7 @@ artifacts/
 
 ---
 
-## ✅ Next Steps
+## Next Steps
 
 - [ ] Connect remote DVC storage (e.g., S3, GDrive)
 - [ ] Automate versioning per GRU experiment

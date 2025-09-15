@@ -1,11 +1,11 @@
 
-# 🔁 GRU: Data Sequence Construction Logic
+# GRU: Data Sequence Construction Logic
 
 This document explains how we construct input and target sequences for training our GRU weather forecasting model.
 
 ---
 
-## 📦 Step-by-Step Logic
+## Step-by-Step Logic
 
 We start with a processed DataFrame `df`:
 
@@ -21,7 +21,7 @@ Let's say:
 
 ---
 
-### 🧠 Understanding the Sequence Creation
+### Understanding the Sequence Creation
 
 ```python
 X_seq.append(data[i:i+seq_len])        # Input sequence
@@ -30,7 +30,7 @@ y_seq.append(data[i+seq_len][0])       # Target (next day's temperature)
 
 ---
 
-### 📊 Visual Breakdown
+### Visual Breakdown
 
 Suppose `data` is:
 
@@ -53,7 +53,7 @@ Suppose `data` is:
 
 ---
 
-## 🎯 Why `data[i+seq_len][0]`?
+## Why `data[i+seq_len][0]`?
 
 - It gives the **next day’s temperature** after the sequence
 - `[0]` selects the **first feature**, i.e., temperature
@@ -61,7 +61,7 @@ Suppose `data` is:
 
 ---
 
-## 🔢 Summary Table
+## Summary Table
 
 | Variable | Shape          | Description                         |
 |----------|----------------|-------------------------------------|
@@ -70,7 +70,7 @@ Suppose `data` is:
 
 ---
 
-## 🔍 About `idx` in `__getitem__`
+## About `idx` in `__getitem__`
 
 ```python
 def __getitem__(self, idx):
@@ -83,7 +83,7 @@ def __getitem__(self, idx):
 
 ---
 
-## ✅ Final Takeaways
+## Final Takeaways
 
 - GRU learns to predict `temperature[t+1]` from a 10-day sliding window
 - Each training sample is: `[X[i:i+10]] → [temperature at i+10]`

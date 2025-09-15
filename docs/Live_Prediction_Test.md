@@ -1,10 +1,10 @@
-# 🔁 Real-Time Prediction Test – GRU Forecasting (AeroCast++)
+# Real-Time Prediction Test – GRU Forecasting (AeroCast++)
 
 This test connects the GRU model with a live sensor simulator to mimic real-time weather forecasting based on streaming sensor data.
 
 ---
 
-## 🧠 Purpose
+## Purpose
 
 To simulate a **real-time forecast system**, where:
 - Synthetic weather data (temperature, humidity, rainfall) is generated every 5 seconds
@@ -13,7 +13,7 @@ To simulate a **real-time forecast system**, where:
 
 ---
 
-## 🔄 Symbolic Flow
+## Symbolic Flow
 
 We use a **sliding window** of the latest 10 observations:
 
@@ -27,7 +27,7 @@ With each new record at time `t_{now}`, the model uses:
 
 ---
 
-## 🧪 Setup
+## Setup
 
 ### 🔧 Sensor Simulator (`simulator/sensor_simulator.py`)
 - Appends a new `.parquet` file every 5 seconds to `data/processed/`
@@ -44,7 +44,7 @@ With each new record at time `t_{now}`, the model uses:
 
 ---
 
-### 🤖 GRU Predictor (`debug/live_predictor.py`)
+### GRU Predictor (`debug/live_predictor.py`)
 - Loads full `data/processed/` on each loop
 - Sorts and picks latest 10 rows
 - Predicts temperature for next time step using trained GRU
@@ -52,17 +52,17 @@ With each new record at time `t_{now}`, the model uses:
 
 ---
 
-## 📉 Example Prediction Log
+## Example Prediction Log
 
 ```
-🌡️ Predicted next temperature → 26.52°C
-🌡️ Predicted next temperature → 28.10°C
-🌡️ Predicted next temperature → 25.89°C
+    Predicted next temperature → 26.52°C
+    Predicted next temperature → 28.10°C
+    Predicted next temperature → 25.89°C
 ```
 
 ---
 
-## 🧪 Sync Design Notes
+## Sync Design Notes
 
 - No explicit signal from sensor to predictor — just `sleep(5)`
 - Both scripts **share the `data/processed/` folder**
@@ -71,7 +71,7 @@ With each new record at time `t_{now}`, the model uses:
 
 ---
 
-## 🚀 Next Steps
+## Next Steps
 
 - Add monitoring + alerting (Grafana, anomaly detection)
 - Replace local folder with Kafka/Azure streaming

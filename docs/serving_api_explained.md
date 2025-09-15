@@ -1,10 +1,10 @@
-# ⚙️ FastAPI Serving: GRU Forecasting Endpoint
+# FastAPI Serving: GRU Forecasting Endpoint
 
 This document explains the FastAPI-based inference API for AeroCast++.
 
 ---
 
-## 📍 Endpoints
+## Endpoints
 
 ### 1. Health Check
 
@@ -27,7 +27,7 @@ POST /predict
 ```
 Accepts a JSON payload with historical sensor values. Returns the next predicted value.
 
-#### ✅ Input Schema
+#### Input Schema
 
 ```json
 {
@@ -38,7 +38,7 @@ Accepts a JSON payload with historical sensor values. Returns the next predicted
 - `sequence`: 2D list representing a time series (shape `[seq_len, 1]`).  
 - Values must be floats wrapped in inner lists (each = one feature).
 
-#### ✅ Response Schema
+#### Response Schema
 
 ```json
 {
@@ -52,7 +52,7 @@ Accepts a JSON payload with historical sensor values. Returns the next predicted
 
 ---
 
-## 🧪 cURL Example
+## cURL Example
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/json"      -d '{"sequence": [[22.3], [22.1], [21.9], [22.0], [22.4]]}'
@@ -60,7 +60,7 @@ curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/
 
 ---
 
-## 🧬 Internals
+## Internals
 
 - GRU model (`gru_weather_forecaster.pt`) is loaded via PyTorch and set to `eval()`.
 - Input → `torch.tensor` of shape `(1, seq_len, 1)`.
@@ -68,7 +68,7 @@ curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/
 
 ---
 
-## 🧭 Swagger UI
+## Swagger UI
 
 Open:
 ```
@@ -78,7 +78,7 @@ Use FastAPI’s interactive docs to test endpoints quickly.
 
 ---
 
-## 🔧 File Location
+## File Location
 
 Implementation lives in:
 ```

@@ -1,10 +1,10 @@
-# GRU Forecasting Module Architecture 🧠
+# GRU Forecasting Module Architecture
 
 This document provides an intuitive and rigorous understanding of how the GRU-based forecasting model works within the AeroCast system — with symbolic representation, shape transitions, and real-world anchoring.
 
 ---
 
-## 📐 1. Symbolic Architecture Diagram
+## 1. Symbolic Architecture Diagram
 
 We feed a sequence of `T=10` time steps, each having `F=3` features (temperature, humidity, rainfall), into a single-layer GRU. We extract the last hidden state and pass it through a fully connected layer to generate the final prediction (e.g., next temperature).
 
@@ -34,7 +34,7 @@ We feed a sequence of `T=10` time steps, each having `F=3` features (temperature
 
 ---
 
-## 📊 2. Input Feature Matrix: Shape & Visualization
+## 2. Input Feature Matrix: Shape & Visualization
 
 Each input sample is a **sequence of 10 days**, with **3 features** per day:
 
@@ -54,7 +54,7 @@ When training in batch:
 
 ---
 
-## 🔁 3. GRU Forward Pass Code: Step-by-Step
+## 3. GRU Forward Pass Code: Step-by-Step
 
 ```python
 class GRURegressor(nn.Module):
@@ -68,7 +68,7 @@ class GRURegressor(nn.Module):
         return self.fc(out[:, -1, :])     # pick h_T → shape [batch, output_dim]
 ```
 
-### 🔍 Dissection of `out[:, -1, :]`
+### Dissection of `out[:, -1, :]`
 
 | Expression        | Meaning                                                   |
 |-------------------|-----------------------------------------------------------|
@@ -80,7 +80,7 @@ class GRURegressor(nn.Module):
 
 ---
 
-## 🧼 4. Why `.squeeze()` is Used During Training
+## 4. Why `.squeeze()` is Used During Training
 
 ```python
 pred = model(xb).squeeze()
@@ -92,7 +92,7 @@ pred = model(xb).squeeze()
 
 ---
 
-## ✅ 5. Example Flow (Real Case)
+## 5. Example Flow (Real Case)
 
 If:
 - `SEQ_LEN = 10`
@@ -116,7 +116,7 @@ prediction = self.fc(last_hidden)           # → [1, 1]
 
 ---
 
-## 🎯 Summary
+## Summary
 
 | Stage                  | Shape                | Purpose                        |
 |------------------------|----------------------|--------------------------------|

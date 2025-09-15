@@ -1,0 +1,17 @@
+{
+	"ulid": "01K56AZ9TXQRWKGX5E577PAKWA",
+	"minTime": 1757916442343,
+	"maxTime": 1757923200000,
+	"stats": {
+		"numSamples": 370585,
+		"numSeries": 929,
+		"numChunks": 1871
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01K56AZ9TXQRWKGX5E577PAKWA"
+		]
+	},
+	"version": 1
+}
