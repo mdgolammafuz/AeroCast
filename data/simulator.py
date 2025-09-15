@@ -1,5 +1,3 @@
-# simulator/sensor_simulator.py
-
 import os
 import time
 import random
@@ -19,10 +17,10 @@ def generate_and_save():
     filename = f"{DATA_DIR}/part-{time.time()}.parquet"
     df = pd.DataFrame([record])
     df.to_parquet(filename, index=False)
-    print(f"💾 Wrote: {filename} → {record}")
+    print(f"Wrote: {filename} → {record}")
 
 if __name__ == "__main__":
-    print("📡 Starting sensor data simulator...")
+    print("Starting sensor data simulator...")
 
     # Step 1: Initial backfill — generate 50 records fast (fake historical context)
     for _ in range(50):

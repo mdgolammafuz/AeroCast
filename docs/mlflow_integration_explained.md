@@ -1,10 +1,10 @@
-# 📊 MLflow Integration in AeroCast++
+# MLflow Integration in AeroCast++
 
 This document explains how **MLflow** was integrated into the GRU-based time series forecasting pipeline in **AeroCast++**, and captures the execution path, UI outputs, key learnings, and debugging tips.
 
 ---
 
-## 🚀 Why We Use MLflow
+## Why We Use MLflow
 
 MLflow was integrated to:
 
@@ -15,24 +15,24 @@ MLflow was integrated to:
 - View training summaries through a clean UI
 - Compare multiple experiments visually
 
-> 🔁 "We don’t just run models — we track them professionally."
+> "We don’t just run models — we track them professionally."
 
 ---
 
-## 📁 Key Concepts
+## Key Concepts
 
-### 🧪 Experiment
+### Experiment
 - A named container for related training runs
 - Example: `AeroCast-GRU-Training`
 
-### 🧪 Run
+### Run
 - One training session = One run
 - Each run has a **unique `run_id`**
 - Run stores: params, metrics, loss plot, model artifact
 
 ---
 
-## 📂 MLflow Directory Structure
+## MLflow Directory Structure
 
 Once a run completes:
 ```
@@ -48,7 +48,7 @@ You can have multiple run_ids under the same experiment.
 
 ---
 
-## 🛠️ Logging Code Snippet
+## Logging Code Snippet
 
 ```python
 with mlflow.start_run():
@@ -60,7 +60,7 @@ with mlflow.start_run():
 
 ---
 
-## 🧭 How to Run
+## How to Run
 
 ```bash
 python training/mlflow_gru_train.py
@@ -75,21 +75,21 @@ Visit: `http://127.0.0.1:5000`
 
 ---
 
-## 🖼️ UI Screenshot Examples
+## UI Screenshot Examples
 
-### ✅ Run Summary Page
+### Run Summary Page
 Shows parameters, metrics, run metadata:
 
 ![Run Summary](docs/mlflow_run_summary.png)
 
-### 📉 Loss Curve Visualization
+### Loss Curve Visualization
 Loss per epoch (logged manually or as artifact):
 
 ![Loss Curve](docs/mlflow_loss_curve.png)
 
 ---
 
-## 🧠 Key Lessons Learned
+## Key Lessons Learned
 
 | Insight | Explanation |
 |--------|-------------|
@@ -101,7 +101,7 @@ Loss per epoch (logged manually or as artifact):
 
 ---
 
-## 🧹 Cleanup Tips
+## Cleanup Tips
 
 - Don't commit `mlruns/` unless needed for sharing results
 - Add to `.gitignore`
@@ -109,7 +109,7 @@ Loss per epoch (logged manually or as artifact):
 
 ---
 
-## 💡 Summary
+## Summary
 
 MLflow transformed our local GRU training into a **tracked, reproducible, and professional pipeline**. This integration is now part of the AeroCast++ backbone — enabling monitoring, comparison, and scaling to more experiments as needed.
 

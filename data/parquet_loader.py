@@ -12,7 +12,7 @@ def load_latest_parquet(parquet_dir="data/processed/"):
     Returns:
         pd.DataFrame: Loaded DataFrame from the latest parquet file.
     """
-    print("🔍 Loading latest Parquet data...")
+    print("Loading latest Parquet data...")
 
     # Find all .parquet files
     parquet_files = glob.glob(os.path.join(parquet_dir, "*.parquet"))
@@ -25,5 +25,5 @@ def load_latest_parquet(parquet_dir="data/processed/"):
 
     # Load and return as DataFrame
     df = pd.read_parquet(latest_file)
-    print(f"✅ Loaded data: {df.shape}")
+    print(f"Loaded data: {df.shape}")
     return df

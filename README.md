@@ -16,7 +16,7 @@ It forecasts weather sensor values in real time by:
 
 ---
 
-## 🔧 Core Technologies
+## Core Technologies
 
 | Component     | Tech Stack                              |
 |--------------|------------------------------------------|

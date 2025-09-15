@@ -1,10 +1,10 @@
-# 🛡️ Input Validation with `Field` (Pydantic) in AeroCast++
+# Input Validation with `Field` (Pydantic) in AeroCast++
 
 We use **Pydantic** to validate incoming JSON for the `/predict` endpoint. `Field()` lets us enforce constraints and auto-generate docs in Swagger.
 
 ---
 
-## 🎯 Why `Field()`?
+## Why `Field()`?
 
 - Ensures data integrity *before* inference
 - Adds constraints (min/max length, required fields)
@@ -13,7 +13,7 @@ We use **Pydantic** to validate incoming JSON for the `/predict` endpoint. `Fiel
 
 ---
 
-## 🧱 Base Structure
+## Base Structure
 
 ```python
 from pydantic import BaseModel, Field
@@ -29,7 +29,7 @@ class WeatherInput(BaseModel):
     )
 ```
 
-### ✅ Key Parts
+### Key Parts
 
 | Argument      | Meaning                                               |
 |---------------|-------------------------------------------------------|
@@ -41,7 +41,7 @@ class WeatherInput(BaseModel):
 
 ---
 
-## 🔍 Validation Example
+## Validation Example
 
 **Valid input:**
 ```json
@@ -72,7 +72,7 @@ class WeatherInput(BaseModel):
 
 ---
 
-## 🧪 Where It’s Used
+## Where It’s Used
 
 See:
 ```
@@ -82,7 +82,7 @@ Model: `WeatherInput`
 
 ---
 
-## 🧠 Mental Model
+## Mental Model
 
 > `BaseModel` gives structure.  
 > `Field()` gives rules + docs.  

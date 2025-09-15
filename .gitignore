@@ -78,3 +78,16 @@ retrain.flag
 data/chunks_head/
 data/wal/
 data/queries.active
+
+# --- Prometheus runtime storage (created if Prometheus runs from repo root) ---
+/data/0*/        # TSDB block dirs (e.g., 01K56...)
+/data/lock
+/data/wal/
+/data/chunks_head/
+/data/queries.active
+
+# --- If we run Prometheus with a dedicated storage path under ./prometheus ---
+prometheus/data/
+prometheus/wal/
+prometheus/chunks_head/
+prometheus/queries.active

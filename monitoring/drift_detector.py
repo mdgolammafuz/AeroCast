@@ -1,43 +1,51 @@
-# monitoring/drift_detector.py
+"""
+Flag drift when GRU MAE exceeds Prophet MAE by >25%.
+Creates 'retrain.flag' (at repo root) and logs to logs/drift.log.
+"""
 
 import os
-import numpy as np
-from datetime import datetime
+import pandas as pd
+import datetime as dt
 
-# --- Configurable Threshold ---
-DRIFT_THRESHOLD = 0.8  # MAE threshold
-CHECK_EVERY_N = 10     # Check drift every N records
+# --- Make paths absolute to the repo root ---
+ROOT     = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOG_DIR  = os.path.join(ROOT, "logs")
+CSV_FILE = os.path.join(LOG_DIR, "prediction_history.csv")
+FLAG_PATH = os.path.join(ROOT, "retrain.flag")
+LOG_FILE  = os.path.join(LOG_DIR, "drift.log")
 
-# --- File paths ---
-FLAG_PATH = "retrain.flag"
-LOG_PATH = "logs/drift.log"
+WINDOW = 10    # last N predictions
+RATIO  = 1.25  # 25% worse than Prophet baseline
 
-# --- Ensure log directory exists ---
-os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+def _log(msg: str):
+    os.makedirs(LOG_DIR, exist_ok=True)
+    with open(LOG_FILE, "a") as f:
+        f.write(msg + "\n")
 
-# --- Drift Check Function ---
-def check_drift(y_true_list, y_pred_list):
-    """
-    Compares true vs predicted values, and logs drift if MAE exceeds threshold.
-    Creates a retrain.flag file if drift is detected.
-    """
-    if len(y_true_list) < CHECK_EVERY_N:
-        return False  # Not enough data yet
+def detect_and_flag() -> bool:
+    """Return True if drift detected."""
+    try:
+        df = pd.read_csv(CSV_FILE)
+    except FileNotFoundError:
+        return False
 
-    y_true = np.array(y_true_list[-CHECK_EVERY_N:])
-    y_pred = np.array(y_pred_list[-CHECK_EVERY_N:])
+    # focus on most recent WINDOW rows for each model
+    gru_err  = df[df.model == "GRU"     ].error.tail(WINDOW)
+    prop_err = df[df.model == "Prophet"].error.tail(WINDOW)
 
-    mae = np.mean(np.abs(y_true - y_pred))
+    # if not enough data yet
+    if len(gru_err) < WINDOW or len(prop_err) < WINDOW:
+        return False
 
-    if mae > DRIFT_THRESHOLD:
-        # --- Log drift ---
-        with open(LOG_PATH, "a") as f:
-            f.write(f"[{datetime.now()}] Drift detected! MAE = {mae:.4f}\n")
+    mae_gru  = gru_err.mean()
+    mae_prop = prop_err.mean()
 
-        # --- Create retrain flag ---
-        with open(FLAG_PATH, "w") as f:
-            f.write(f"Drift detected at {datetime.now()}\n")
+    if mae_gru > RATIO * mae_prop:
+        # create flag file only if not present
+        if not os.path.exists(FLAG_PATH):
+            open(FLAG_PATH, "w").close()
 
+        _log(f"{dt.datetime.utcnow().isoformat()}  DRIFT  "
+             f"GRU MAE={mae_gru:.3f}  > {RATIO}× Prophet MAE={mae_prop:.3f}")
         return True
-
     return False

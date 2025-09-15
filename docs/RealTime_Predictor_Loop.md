@@ -1,16 +1,16 @@
-# 🔁 Real-Time GRU Prediction Loop: Sliding Window Simulation
+# Real-Time GRU Prediction Loop: Sliding Window Simulation
 
 This document explains how our `live_predictor.py` and `sensor_simulator.py` synchronize in a **live forecasting scenario** using a **sliding window over time-series data**.
 
 ---
 
-## 🎯 Goal
+## Goal
 
 Predict the **next temperature (t+1)** based on the **last 10 time steps** of simulated data — and do it in real-time, as new sensor data arrives every 5 seconds.
 
 ---
 
-## 🧱 Architecture
+## Architecture
 
 ```
 +-------------------------+      +-----------------------------+
@@ -24,7 +24,7 @@ Predict the **next temperature (t+1)** based on the **last 10 time steps** of si
 
 ---
 
-## ⏱️ Time Sequence: Sliding Forecast
+## Time Sequence: Sliding Forecast
 
 If the last data rows are:
 
@@ -45,7 +45,7 @@ At next 5s tick:
 
 ---
 
-## 🔣 Symbolic Formulation
+## Symbolic Formulation
 
 Let `X = [x_{t-9}, ..., x_t] ∈ ℝ^{10×3}` where 3 = temperature, humidity, rainfall.  
 Let `ŷ_{t+1} = GRU(X)` be the prediction.
@@ -54,7 +54,7 @@ This sliding window moves forward every 5 seconds, synced with sensor input.
 
 ---
 
-## 🔄 Live Loop Implementation (Pseudo)
+## Live Loop Implementation (Pseudo)
 
 ```python
 while True:
@@ -67,7 +67,7 @@ while True:
 
 ---
 
-## 🧪 Outcome
+## Outcome
 
 This creates a **real-time test environment**:
 - Simulates a streaming weather station
