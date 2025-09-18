@@ -91,3 +91,14 @@ prometheus/data/
 prometheus/wal/
 prometheus/chunks_head/
 prometheus/queries.active
+
+# Prometheus TSDB runtime (ignore all ULID blocks and tsdb internals)
+data/01K*/
+data/01K*/**
+data/chunks_head/
+data/wal/
+data/queries.active
+data/lock
+
+# Generated training artifact
+data/training_data.csv
