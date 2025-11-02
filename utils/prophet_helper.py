@@ -1,4 +1,3 @@
-# utils/prophet_helper.py
 import json
 import pandas as pd
 from prophet.serialize import model_from_json  # <-- official loader

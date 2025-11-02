@@ -27,4 +27,4 @@ model.eval()
 # Make prediction
 with torch.no_grad():
     prediction = model(X_tensor)
-    print("🌡️ Next predicted temperature:", prediction.item())
+    print("Next predicted temperature:", prediction.item())
