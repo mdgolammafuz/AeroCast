@@ -5,9 +5,9 @@ from torch.utils.data import Dataset, DataLoader
 import os
 
 # Step 1: Load preprocessed data
-print("🔍 Loading data from 'data/processed/' ...")
+print("Loading data from 'data/processed/' ...")
 df = pd.read_parquet("data/processed/")
-print("✅ Data loaded:", df.shape)
+print("Data loaded:", df.shape)
 
 # Step 2: Sort by timestamp
 df = df.sort_values("timestamp")
@@ -27,8 +27,8 @@ def create_sequences(data, seq_len):
     return torch.tensor(X_seq, dtype=torch.float32), torch.tensor(y_seq, dtype=torch.float32)
 
 X_tensor, y_tensor = create_sequences(X, SEQ_LEN)
-# ✅ Add this line to understand data size
-print(f"📈 Total training sequences available: {len(X_tensor)}")
+# Add this line to understand data size
+print(f"Total training sequences available: {len(X_tensor)}")
 
 # Step 5: Define Dataset
 class WeatherDataset(Dataset):
@@ -62,7 +62,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Step 7: Train
 EPOCHS = 5
-print("🚀 Training GRU...")
+print("Training GRU...")
 for epoch in range(EPOCHS):
     total_loss = 0
     for xb, yb in dataloader:
@@ -72,9 +72,9 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-    print(f"📉 Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.4f}")
+    print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.4f}")
 
 # Step 8: Save the model
 model_path = "model/gru_weather_forecaster.pt"
 torch.save(model.state_dict(), model_path)
-print(f"✅ Model saved to {model_path}")
+print(f"Model saved to {model_path}")

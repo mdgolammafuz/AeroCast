@@ -99,6 +99,9 @@ data/chunks_head/
 data/wal/
 data/queries.active
 data/lock
-
+data/01*/
+last_retrain.txt
+logs/
+prometheus/data/
 # Generated training artifact
 data/training_data.csv
