@@ -11,10 +11,14 @@ import torch
 import numpy as np
 import time
 import os
+import glob
+import pandas as pd
+from datetime import datetime
 
 from model.gru_model import GRUWeatherForecaster
-from utils.rca_logger import log_prediction
+from utils.rca_logger import log_prediction  # keep your logger
 
+# ------------------ PROM METRICS ------------------
 PREDICTIONS = Counter("predictions_total", "Total predictions", ["model_type"])
 ERR_GAUGE = Gauge("forecast_error", "Absolute error", ["model_type"])
 LAT_SUMMARY = Summary(
@@ -22,6 +26,17 @@ LAT_SUMMARY = Summary(
     "Prediction latency (ms) for AeroCast GRU endpoint",
 )
 
+# new: track eval RMSE coming from client
+RMSE_GAUGE = Gauge(
+    "aerocast_last_rmse",
+    "last reported RMSE (client-evaluated)",
+)
+
+# running mse state (simple, in-memory)
+_MSE_SUM = 0.0
+_MSE_COUNT = 0
+
+# ------------------ MODEL LOAD ------------------
 gru = GRUWeatherForecaster(input_dim=3, hidden_dim=16, output_dim=1)
 ARTIFACT_PATH = os.path.join("artifacts", "gru_weather_forecaster.pt")
 if os.path.exists(ARTIFACT_PATH):
@@ -30,9 +45,19 @@ gru.eval()
 
 app = FastAPI(title="AeroCast++ API", version="1.0")
 
+# where Spark is writing
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+PARQUET_DIR = os.path.join(ROOT, "data", "processed", "noaa")
+
 
 class SequenceIn(BaseModel):
+    # 5 timesteps, each = [temp, humidity, rainfall]
     sequence: list[list[float]] = Field(..., min_items=5)
+
+
+class EvalPayload(BaseModel):
+    predicted: float
+    actual: float
 
 
 def _predict(model, seq):
@@ -46,6 +71,29 @@ def _predict(model, seq):
     return out
 
 
+def _latest_parquet_df() -> pd.DataFrame:
+    if not os.path.isdir(PARQUET_DIR):
+        raise FileNotFoundError(f"{PARQUET_DIR} does not exist")
+
+    files = glob.glob(os.path.join(PARQUET_DIR, "*.parquet"))
+    if not files:
+        raise FileNotFoundError(f"no parquet files in {PARQUET_DIR}")
+
+    newest = max(files, key=os.path.getmtime)
+    df = pd.read_parquet(newest)
+
+    # drop producer-only
+    for col in ("v", "station"):
+        if col in df.columns:
+            df = df.drop(columns=[col])
+
+    if "ts" in df.columns:
+        df["ts"] = pd.to_datetime(df["ts"])
+        df = df.sort_values("ts")
+
+    return df
+
+
 @app.post("/predict")
 def predict_gru(data: SequenceIn):
     seq = data.sequence
@@ -57,11 +105,45 @@ def predict_gru(data: SequenceIn):
             )
     try:
         fc = round(_predict(gru, seq), 2)
+        # you can log this if you want
+        try:
+            log_prediction({"forecast": fc})
+        except Exception:
+            # don't fail the API if logger fails
+            pass
+
         ERR_GAUGE.labels("GRU").set(0)
         PREDICTIONS.labels("GRU").inc()
         return {"forecast": fc}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
+
+
+@app.get("/latest")
+def latest():
+    """Show the latest row Spark wrote → proves streaming → parquet → API."""
+    try:
+        df = _latest_parquet_df()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    row = df.iloc[-1].to_dict()
+    return {"row": row}
+
+
+@app.post("/eval")
+def eval_model(payload: EvalPayload):
+    """Client posts its predicted vs actual → we update RMSE gauge."""
+    global _MSE_SUM, _MSE_COUNT
+
+    err = payload.actual - payload.predicted
+    mse = err * err
+    _MSE_SUM += mse
+    _MSE_COUNT += 1
+
+    rmse = (_MSE_SUM / _MSE_COUNT) ** 0.5
+    RMSE_GAUGE.set(rmse)
+
+    return {"rmse": rmse, "count": _MSE_COUNT}
 
 
 @app.get("/metrics")
@@ -71,4 +153,4 @@ def metrics():
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, "time": datetime.utcnow().isoformat()}
