@@ -51,15 +51,15 @@ LAST_RETRAIN_TS = Gauge(
     registry=registry,
 )
 
-WINDOW = 5  # must match generator
-N_FEATS = 3  # temp, humidity, rainfall
+WINDOW = 5
+N_FEATS = 3
+MODEL_NAME = "AeroCast-GRU-Model"
 
 
 class TSDataset(Dataset):
     def __init__(self, path: str):
         df = pd.read_csv(path).astype("float32")
-        # features are all but last
-        X_raw = df.iloc[:, :-1].values  # shape (N, WINDOW*3)
+        X_raw = df.iloc[:, :-1].values
         N = X_raw.shape[0]
         self.X = torch.tensor(X_raw).reshape(N, WINDOW, N_FEATS)
         self.y = torch.tensor(df["target"].values).reshape(N, 1)
@@ -87,7 +87,7 @@ def _save_retrain_count(n: int) -> None:
 
 def reason():
     if os.path.exists(FLAG):
-        print(f"[train] {FLAG} FOUND at {os.path.abspath(FLAG)}, marking run as drift and deleting it.")
+        print(f"[train] {FLAG} FOUND, marking run as drift and deleting it.")
         os.remove(FLAG)
         return "drift"
     return "initial"
@@ -96,6 +96,7 @@ def reason():
 def train():
     rsn = reason()
     mlflow.set_experiment("AeroCast-GRU")
+    # keep autolog but don't let it try to move stages
     mlflow.pytorch.autolog(log_models=False)
 
     ds = TSDataset(CSV)
@@ -106,12 +107,11 @@ def train():
     lossf = nn.MSELoss()
 
     t0 = time.perf_counter()
-    with mlflow.start_run():
+    with mlflow.start_run() as run:
         mlflow.set_tag("run_reason", rsn)
         mlflow.set_tag("source_layer", "silver")
         mlflow.log_param("input_dim", N_FEATS)
         mlflow.log_param("window", WINDOW)
-        mlflow.log_param("lags", WINDOW)  # simple
 
         for epoch in range(5):
             model.train()
@@ -126,13 +126,24 @@ def train():
             epoch_loss = tot / len(loader)
             mlflow.log_metric("loss", epoch_loss, step=epoch)
             LOSS_GAUGE.labels(str(epoch), rsn).set(epoch_loss)
-            push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
+            try:
+                push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
+            except Exception:
+                pass
 
-        # save model locally
+        # eval RMSE on full train for comparison
+        model.eval()
+        with torch.no_grad():
+            preds = model(ds.X).numpy()
+            targets = ds.y.numpy()
+        rmse = float(((preds - targets) ** 2).mean() ** 0.5)
+        mlflow.log_metric("rmse", rmse)
+
+        # save locally
         os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
         torch.save(model.state_dict(), os.path.join(ROOT, "artifacts", "gru_weather_forecaster.pt"))
 
-        # log to MLflow
+        # log to mlflow & register
         X_sample, _ = next(iter(loader))
         signature = infer_signature(
             X_sample.numpy(), model(X_sample).detach().numpy()
@@ -141,29 +152,29 @@ def train():
             model, "model", input_example=X_sample.numpy(), signature=signature
         )
         mlflow.register_model(
-            f"runs:/{mlflow.active_run().info.run_id}/model",
-            "AeroCast-GRU-Model",
+            f"runs:/{run.info.run_id}/model",
+            MODEL_NAME,
         )
 
     dur = time.perf_counter() - t0
     RETRAIN_DUR_S.observe(dur)
 
-    # write human file
     now = datetime.datetime.utcnow()
     with open(LAST_RETRAIN_FILE, "w") as f:
         f.write(now.isoformat())
 
-    # file-backed retrain count
     retrain_count = _load_retrain_count()
     if rsn == "drift":
         retrain_count += 1
         _save_retrain_count(retrain_count)
         RETRAIN_TOTAL.inc()
 
-    # set gauges
     RETRAIN_COUNT_G.set(retrain_count)
     LAST_RETRAIN_TS.set(now.timestamp())
-    push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
+    try:
+        push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
+    except Exception:
+        pass
 
     print(f"[train] done. reason={rsn} duration={dur:.2f}s retrain_count={retrain_count}")
 
