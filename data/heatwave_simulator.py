@@ -1,4 +1,3 @@
-# data/heatwave_simulator.py
 """
 Simulated weather sensor stream designed to trigger drift robustly, without globals.
 

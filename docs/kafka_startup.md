@@ -14,5 +14,12 @@ kafka-topics --create \
   --partitions 1 \
   --topic weather-data
 
+kafka-topics \
+  --create \
+  --topic noaa-weather \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+
 # STEP 5: Confirm topic exists
 kafka-topics --list --bootstrap-server localhost:9092
