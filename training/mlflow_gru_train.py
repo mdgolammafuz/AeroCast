@@ -14,19 +14,36 @@ from prometheus_client import (
 )
 from mlflow.models.signature import infer_signature
 
-CSV = "data/training_data.csv"
-FLAG = "retrain.flag"
-LAST_RETRAIN_FILE = "last_retrain.txt"
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+CSV = os.path.join(ROOT, "data", "training_data.csv")
+FLAG = os.path.join(ROOT, "retrain.flag")
+LAST_RETRAIN_FILE = os.path.join(ROOT, "last_retrain.txt")
+LOG_DIR = os.path.join(ROOT, "logs")
+RETRAIN_COUNT_FILE = os.path.join(LOG_DIR, "retrain_count.txt")  # NEW
+
+os.makedirs(LOG_DIR, exist_ok=True)
 
 registry = CollectorRegistry()
 
 LOSS_GAUGE = Gauge("training_loss", "GRU loss", ["epoch", "reason"], registry=registry)
 RETRAIN_TOTAL = Counter(
-    "aerocast_retrain_total", "Total AeroCast GRU retrains", registry=registry
+    "aerocast_retrain_total", "Total AeroCast GRU retrains (pushgateway raw)", registry=registry
 )
 RETRAIN_DUR_S = Summary(
     "aerocast_retrain_duration_seconds",
     "Duration of GRU retrain runs (s)",
+    registry=registry,
+)
+# NEW: file-backed, authoritative for Grafana
+RETRAIN_COUNT_G = Gauge(
+    "aerocast_retrain_count",
+    "File-backed total retrains (authoritative)",
+    registry=registry,
+)
+# NEW: already there in your runs, keep it
+LAST_RETRAIN_TS = Gauge(
+    "aerocast_last_retrain_ts",
+    "Unix timestamp (UTC) of last GRU retrain run",
     registry=registry,
 )
 
@@ -44,9 +61,23 @@ class TS(Dataset):
         return self.X[i], self.y[i]
 
 
+def _load_retrain_count() -> int:
+    if not os.path.exists(RETRAIN_COUNT_FILE):
+        return 0
+    try:
+        return int(open(RETRAIN_COUNT_FILE, "r").read().strip() or "0")
+    except Exception:
+        return 0
+
+
+def _save_retrain_count(n: int) -> None:
+    with open(RETRAIN_COUNT_FILE, "w") as f:
+        f.write(str(n))
+
+
 def reason():
     if os.path.exists(FLAG):
-        print(f"[train] {FLAG} FOUND at {os.path.abspath(FLAG)}, marking run as drift and deleting it.")
+        print(f"[train] {FLAG} FOUND at {FLAG}, marking run as drift and deleting it.")
         os.remove(FLAG)
         return "drift"
     return "initial"
@@ -81,10 +112,11 @@ def train():
             epoch_loss = tot / len(loader)
             mlflow.log_metric("loss", epoch_loss, step=epoch)
             LOSS_GAUGE.labels(str(epoch), rsn).set(epoch_loss)
+            # we keep pushing to same job
             push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
 
-        os.makedirs("artifacts", exist_ok=True)
-        torch.save(model.state_dict(), "artifacts/gru_weather_forecaster.pt")
+        os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
+        torch.save(model.state_dict(), os.path.join(ROOT, "artifacts", "gru_weather_forecaster.pt"))
 
         X_sample, _ = next(iter(loader))
         signature = infer_signature(
@@ -100,15 +132,27 @@ def train():
 
     dur = time.perf_counter() - t0
     RETRAIN_DUR_S.observe(dur)
-    if rsn == "drift":
-        RETRAIN_TOTAL.inc()
 
+    # --- NEW PART: file-backed counter + ts ---
+    now = datetime.datetime.utcnow()
+    now_ts = now.timestamp()
+    with open(LAST_RETRAIN_FILE, "w") as f:
+        f.write(now.isoformat())
+
+    # load → maybe bump → save
+    retrain_count = _load_retrain_count()
+    if rsn == "drift":
+        retrain_count += 1
+        _save_retrain_count(retrain_count)
+        # keep old counter too (even if pushgateway overwrites to 1)
+        RETRAIN_TOTAL.inc()
+    # always set gauges
+    RETRAIN_COUNT_G.set(retrain_count)
+    LAST_RETRAIN_TS.set(now_ts)
+    # final push (overwrites is fine, it's gauges)
     push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
 
-    with open(LAST_RETRAIN_FILE, "w") as f:
-        f.write(datetime.datetime.utcnow().isoformat())
-
-    print(f"[train] done. reason={rsn} duration={dur:.2f}s")
+    print(f"[train] done. reason={rsn} duration={dur:.2f}s retrain_count={retrain_count}")
 
 
 if __name__ == "__main__":
