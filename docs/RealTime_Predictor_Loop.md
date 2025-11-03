@@ -61,7 +61,7 @@ while True:
     df = load_latest_data()
     X = last_10_rows(df)
     ŷ = model(X)
-    print("🌡️ Predicted Temp:", ŷ)
+    print("Predicted Temp:", ŷ)
     time.sleep(5)
 ```
 

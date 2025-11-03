@@ -21,7 +21,7 @@ def load_latest_parquet(parquet_dir="data/processed/"):
 
     # Get the most recently modified parquet file
     latest_file = max(parquet_files, key=os.path.getmtime)
-    print(f"📁 Latest Parquet file: {latest_file}")
+    print(f"Latest Parquet file: {latest_file}")
 
     # Load and return as DataFrame
     df = pd.read_parquet(latest_file)

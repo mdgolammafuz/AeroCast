@@ -62,26 +62,35 @@ def main():
             time.sleep(5)
             continue
 
-        seq = temps[-WINDOW:]
-        actual = float(temps[-1])
+        seq_temp = temps[-WINDOW:]
+        actual = float(seq_temp[-1])
 
+        # derive 3-feature timesteps to match model
+        humidity = max(30.0, min(90.0, actual + 10))
+        rainfall = 0.0
+        seq3 = [[t, humidity, rainfall] for t in seq_temp]
+
+        # GRU prediction
         resp = requests.post(
             API_URL,
-            json={"sequence": [[x] for x in seq]},
+            json={"sequence": seq3},
             timeout=5,
         )
         resp.raise_for_status()
         gru_fc = float(resp.json()["forecast"])
 
+        # Prophet
         prophet_fc = forecast_next(df_latest, prophet_model, freq="5s")
 
         ts = datetime.utcnow().isoformat()
 
+        # log GRU
         err_gru = abs(gru_fc - actual)
-        append_row(ts, seq, gru_fc, actual, err_gru, "GRU")
+        append_row(ts, seq3, gru_fc, actual, err_gru, "GRU")
 
+        # log Prophet
         err_prophet = abs(prophet_fc - actual)
-        append_row(ts, seq, prophet_fc, actual, err_prophet, "Prophet")
+        append_row(ts, seq_temp, prophet_fc, actual, err_prophet, "Prophet")
 
         print(f"[Feeder] {ts}  GRU={gru_fc:.2f}  Prophet={prophet_fc:.2f}  actual={actual:.2f}")
         time.sleep(5)
