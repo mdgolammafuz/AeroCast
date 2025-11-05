@@ -27,17 +27,24 @@ def fetch_noaa():
         temperature = 0.0
     temperature = float(temperature)
 
-    # make the two missing features so the rest of the pipeline has them
-    # simple, fixed-ish, no pretending
-    humidity = 60.0
-    windspeed = 5.0
+    wind_obj = props.get("windSpeed") or {}
+    windspeed = wind_obj.get("value")
+    if windspeed is None:
+        windspeed = 0.0
+    windspeed = float(windspeed)
+
+    pres_obj = props.get("barometricPressure") or {}
+    pressure = pres_obj.get("value")
+    if pressure is None:
+        pressure = 0.0
+    pressure = float(pressure)
 
     return {
         "ts": _now_iso(),
         "station": STATION_ID,
         "temperature": temperature,
-        "humidity": humidity,
         "windspeed": windspeed,
+        "pressure": pressure,
         "v": 1,
     }
 

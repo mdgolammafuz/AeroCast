@@ -1,3 +1,4 @@
+# streaming/client/live_predictor_feeder.py
 import os
 import sys
 import glob
@@ -10,17 +11,15 @@ import requests
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, ROOT)
 
-from utils.prophet_helper import load_prophet_model, forecast_next
-
 API_URL = "http://localhost:8000/predict"
+EVAL_URL = "http://localhost:8000/eval"
 LOG_DIR = os.path.join(ROOT, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "prediction_history.csv")
-PARQUET_DIR = os.path.join(ROOT, "data", "processed")
+
+PARQUET_DIR = os.path.join(ROOT, "data", "processed", "noaa")
 
 WINDOW = 5
 os.makedirs(LOG_DIR, exist_ok=True)
-
-prophet_model = load_prophet_model()
 
 
 def ensure_header():
@@ -29,14 +28,35 @@ def ensure_header():
             f.write("timestamp,sequence,forecast,actual,error,model\n")
 
 
-def load_last_n_parquets(n=5) -> pd.DataFrame:
-    files = sorted(glob.glob(os.path.join(PARQUET_DIR, "part-*.parquet")))
+def _latest_parquet_files(n=5):
+    files = glob.glob(os.path.join(PARQUET_DIR, "*.parquet"))
+    # keep only real files with nonzero size
+    files = [f for f in files if os.path.getsize(f) > 0]
     if not files:
-        raise FileNotFoundError("no parquet files yet in data/processed")
-    chunk = files[-n:]
-    dfs = [pd.read_parquet(f) for f in chunk]
+        return []
+    files.sort(key=os.path.getmtime)
+    return files[-n:]
+
+
+def load_last_n_rows(n=5) -> pd.DataFrame:
+    files = _latest_parquet_files(n)
+    if not files:
+        raise FileNotFoundError("no parquet files yet in data/processed/noaa/")
+    dfs = []
+    for f in files:
+        try:
+            dfs.append(pd.read_parquet(f))
+        except Exception:
+            # skip any half-written file
+            continue
+    if not dfs:
+        raise FileNotFoundError("no readable parquet files in data/processed/noaa/")
     df = pd.concat(dfs, ignore_index=True)
-    return df[["ts", "temperature"]]
+
+    df = df[["ts", "temperature", "windspeed", "pressure"]]
+    df["ts"] = pd.to_datetime(df["ts"])
+    df = df.sort_values("ts").reset_index(drop=True)
+    return df
 
 
 def append_row(ts, seq, forecast, actual, error, model):
@@ -46,53 +66,55 @@ def append_row(ts, seq, forecast, actual, error, model):
 
 def main():
     ensure_header()
-    print("[Feeder] running… CTRL-C to stop")
+    print("[Feeder] running on NOAA bronze… CTRL-C to stop")
 
     while True:
         try:
-            df_latest = load_last_n_parquets(5)
+            df_latest = load_last_n_rows(5)
         except FileNotFoundError:
-            print("[Feeder] waiting for parquet…")
+            print("[Feeder] waiting for NOAA parquet…")
             time.sleep(5)
             continue
 
-        temps = df_latest["temperature"].tolist()
-        if len(temps) < WINDOW:
-            print(f"[Feeder] only {len(temps)} readings, need {WINDOW}, retrying…")
+        if len(df_latest) < WINDOW:
+            print(f"[Feeder] only {len(df_latest)} readings, need {WINDOW}, retrying…")
             time.sleep(5)
             continue
 
-        seq_temp = temps[-WINDOW:]
-        actual = float(seq_temp[-1])
+        window_df = df_latest.iloc[-WINDOW:]
 
-        # derive 3-feature timesteps to match model
-        humidity = max(30.0, min(90.0, actual + 10))
-        rainfall = 0.0
-        seq3 = [[t, humidity, rainfall] for t in seq_temp]
+        seq = []
+        for _, r in window_df.iterrows():
+            seq.append([
+                float(r["temperature"]),
+                float(r["windspeed"]),
+                float(r["pressure"]),
+            ])
 
-        # GRU prediction
+        actual = float(window_df.iloc[-1]["temperature"])
+
         resp = requests.post(
             API_URL,
-            json={"sequence": seq3},
+            json={"sequence": seq},
             timeout=5,
         )
         resp.raise_for_status()
-        gru_fc = float(resp.json()["forecast"])
+        forecast = float(resp.json()["forecast"])
 
-        # Prophet
-        prophet_fc = forecast_next(df_latest, prophet_model, freq="5s")
+        try:
+            requests.post(
+                EVAL_URL,
+                json={"predicted": forecast, "actual": actual},
+                timeout=3,
+            )
+        except Exception:
+            pass
 
         ts = datetime.utcnow().isoformat()
+        err = abs(forecast - actual)
+        append_row(ts, seq, forecast, actual, err, "GRU")
 
-        # log GRU
-        err_gru = abs(gru_fc - actual)
-        append_row(ts, seq3, gru_fc, actual, err_gru, "GRU")
-
-        # log Prophet
-        err_prophet = abs(prophet_fc - actual)
-        append_row(ts, seq_temp, prophet_fc, actual, err_prophet, "Prophet")
-
-        print(f"[Feeder] {ts}  GRU={gru_fc:.2f}  Prophet={prophet_fc:.2f}  actual={actual:.2f}")
+        print(f"[Feeder] {ts} GRU={forecast:.2f} actual={actual:.2f} err={err:.2f}")
         time.sleep(5)
 
 
