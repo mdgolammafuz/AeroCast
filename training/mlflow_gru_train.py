@@ -85,18 +85,23 @@ def _save_retrain_count(n: int) -> None:
         f.write(str(n))
 
 
-def reason():
-    if os.path.exists(FLAG):
-        print(f"[train] {FLAG} FOUND, marking run as drift and deleting it.")
-        os.remove(FLAG)
+def get_reason_and_clear_flag() -> str:
+    if not os.path.exists(FLAG):
+        return "initial"
+
+    txt = open(FLAG, "r").read().strip()
+    os.remove(FLAG)
+
+    if txt.startswith("drift"):
         return "drift"
-    return "initial"
+    if txt.startswith("schedule"):
+        return "schedule"
+    return "unknown"
 
 
 def train():
-    rsn = reason()
+    rsn = get_reason_and_clear_flag()
     mlflow.set_experiment("AeroCast-GRU")
-    # keep autolog but don't let it try to move stages
     mlflow.pytorch.autolog(log_models=False)
 
     ds = TSDataset(CSV)
@@ -131,7 +136,6 @@ def train():
             except Exception:
                 pass
 
-        # eval RMSE on full train for comparison
         model.eval()
         with torch.no_grad():
             preds = model(ds.X).numpy()
@@ -139,11 +143,9 @@ def train():
         rmse = float(((preds - targets) ** 2).mean() ** 0.5)
         mlflow.log_metric("rmse", rmse)
 
-        # save locally
         os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
         torch.save(model.state_dict(), os.path.join(ROOT, "artifacts", "gru_weather_forecaster.pt"))
 
-        # log to mlflow & register
         X_sample, _ = next(iter(loader))
         signature = infer_signature(
             X_sample.numpy(), model(X_sample).detach().numpy()
@@ -157,14 +159,13 @@ def train():
         )
 
     dur = time.perf_counter() - t0
-    RETRAIN_DUR_S.observe(dur)
 
     now = datetime.datetime.utcnow()
     with open(LAST_RETRAIN_FILE, "w") as f:
-        f.write(now.isoformat())
+        f.write(now.replace(tzinfo=datetime.timezone.utc).isoformat())
 
     retrain_count = _load_retrain_count()
-    if rsn == "drift":
+    if rsn in ("drift", "schedule"):
         retrain_count += 1
         _save_retrain_count(retrain_count)
         RETRAIN_TOTAL.inc()
