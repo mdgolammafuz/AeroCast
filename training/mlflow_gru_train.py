@@ -20,6 +20,7 @@ from prometheus_client import (
     Summary,
 )
 
+PUSHGATEWAY_HOST = os.environ.get("PUSHGATEWAY_HOST", "localhost:9091")
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CSV = os.path.join(ROOT, "data", "training_data.csv")
 FLAG = os.path.join(ROOT, "retrain.flag")
@@ -132,7 +133,7 @@ def train():
             mlflow.log_metric("loss", epoch_loss, step=epoch)
             LOSS_GAUGE.labels(str(epoch), rsn).set(epoch_loss)
             try:
-                push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
+                push_to_gateway(PUSHGATEWAY_HOST, job="aerocast_training", registry=registry)
             except Exception:
                 pass
 
@@ -173,7 +174,7 @@ def train():
     RETRAIN_COUNT_G.set(retrain_count)
     LAST_RETRAIN_TS.set(now.timestamp())
     try:
-        push_to_gateway("localhost:9091", job="aerocast_training", registry=registry)
+        push_to_gateway(PUSHGATEWAY_HOST, job="aerocast_training", registry=registry)
     except Exception:
         pass
 

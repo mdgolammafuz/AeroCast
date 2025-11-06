@@ -1,0 +1,5 @@
+apiVersion: v2
+name: aerocast
+version: 0.1.0
+description: AeroCast streaming demo
+type: application

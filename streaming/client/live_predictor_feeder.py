@@ -1,4 +1,3 @@
-# streaming/client/live_predictor_feeder.py
 import os
 import sys
 import glob

@@ -1,4 +1,3 @@
-# monitoring/drift_detector.py
 # Stable version: count only when we go from COOL -> HOT.
 # + file-backed drift_count gauge for Grafana (because pushadd isn't accumulating).
 
@@ -24,7 +23,7 @@ DRIFT_COUNT_FILE = os.path.join(LOG_DIR, "drift_count.txt")  # NEW
 
 WINDOW = 6
 TEMP_THRESHOLD = 38.0
-PUSHGATEWAY = "localhost:9091"
+PUSHGATEWAY = os.environ.get("PUSHGATEWAY_HOST", "localhost:9091")
 
 # 1) gauges → overwrite OK
 gauge_reg = CollectorRegistry()
@@ -153,12 +152,15 @@ def detect_and_flag() -> bool:
         return False
 
     # 4) REAL NEW DRIFT (COOL -> HOT)
-    open(FLAG_PATH, "w").close()
-    _write_state("hot")
-
     now = dt.datetime.utcnow()
     now_iso = now.isoformat()
     now_ts = now.timestamp()
+
+    # write a descriptive flag so trainer can say reason=drift
+    with open(FLAG_PATH, "w") as f:
+        f.write(f"drift {now_iso}")
+
+    _write_state("hot")
 
     _log(
         f"{now_iso}  DRIFT  mean_actual={mean_actual:.2f}°C  >= {TEMP_THRESHOLD}°C"

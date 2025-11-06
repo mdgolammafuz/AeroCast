@@ -1,0 +1,26 @@
+FROM python:3.10-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# system deps for pandas/pyarrow
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.runtime.txt /app/requirements.runtime.txt
+RUN pip install --no-cache-dir -r /app/requirements.runtime.txt
+
+# copy whole project (your code expects relative paths like data/..., artifacts/...)
+COPY . /app
+
+# create runtime dirs
+RUN mkdir -p /app/data /app/logs /app/artifacts
+
+EXPOSE 8000
+
+# entrypoint: run FastAPI
+CMD ["uvicorn", "serving.fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]

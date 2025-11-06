@@ -1,4 +1,3 @@
-# streaming/ingestion/heatwave_simulator.py
 """
 Simulated weather stream.
 
