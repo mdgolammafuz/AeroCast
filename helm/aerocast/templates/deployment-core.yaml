@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerocast-core
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aerocast-core
+  template:
+    metadata:
+      labels:
+        app: aerocast-core
+    spec:
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: artifacts
+          emptyDir: {}
+      containers:
+        # 1) API ---------------------------------------------------------
+        - name: api
+          image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+            - name: artifacts
+              mountPath: /app/artifacts
+          command: ["/bin/sh","-c"]
+          args:
+            - >
+              mkdir -p /app/state &&
+              touch /app/state/last_retrain.txt &&
+              ln -sf /app/state/retrain.flag /app/retrain.flag &&
+              ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
+              uvicorn serving.fastapi_app:app --host 0.0.0.0 --port 8000
+
+        # 2) Pushgateway (sidecar, same pod) -----------------------------
+        - name: pushgateway
+          image: "{{ .Values.images.pushgateway.repository }}:{{ .Values.images.pushgateway.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9091
+          # no volumes needed
+
+        # 3) Feeder ------------------------------------------------------
+        - name: feeder
+          image: "{{ .Values.images.worker.repository }}:{{ .Values.images.worker.tag }}"
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+            - name: artifacts
+              mountPath: /app/artifacts
+          env:
+            # feeder will hit localhost:8000 inside pod
+            - name: API_URL
+              value: http://localhost:8000
+          command: ["/bin/sh","-c"]
+          args:
+            - >
+              mkdir -p /app/state &&
+              touch /app/state/last_retrain.txt &&
+              ln -sf /app/state/retrain.flag /app/retrain.flag &&
+              ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
+              until curl -s http://localhost:8000/healthz > /dev/null; do
+                echo 'waiting for API...';
+                sleep 2;
+              done;
+              python streaming/client/live_predictor_feeder.py
+
+        # 4) Drift detector ----------------------------------------------
+        - name: drift
+          image: "{{ .Values.images.worker.repository }}:{{ .Values.images.worker.tag }}"
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+          env:
+            - name: PUSHGATEWAY_HOST
+              value: localhost:9091
+          command: ["/bin/sh","-c"]
+          args:
+            - >
+              mkdir -p /app/state &&
+              touch /app/state/last_retrain.txt &&
+              ln -sf /app/state/retrain.flag /app/retrain.flag &&
+              ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
+              while true; do python monitoring/drift_detector.py; sleep 5; done
+
+        # 5) Trainer -----------------------------------------------------
+        - name: trainer
+          image: "{{ .Values.images.worker.repository }}:{{ .Values.images.worker.tag }}"
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+            - name: artifacts
+              mountPath: /app/artifacts
+          env:
+            - name: PUSHGATEWAY_HOST
+              value: localhost:9091
+            - name: TRAIN_COOLDOWN
+              value: "{{ .Values.trainer.cooldownSeconds }}"
+          command: ["/bin/sh","-c"]
+          args:
+            - >
+              python data/generate_training_data.py || true;
+              mkdir -p /app/state &&
+              touch /app/state/last_retrain.txt &&
+              ln -sf /app/state/retrain.flag /app/retrain.flag &&
+              ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
+              while true; do
+                NOW=$(date +%s);
+                LAST=0;
+                [ -f /app/state/last_train_ts ] && LAST=$(cat /app/state/last_train_ts || echo 0);
+                COOLDOWN=${TRAIN_COOLDOWN:-60};
+                if [ -f /app/retrain.flag ] && [ $((NOW - LAST)) -ge $COOLDOWN ]; then
+                  python training/mlflow_gru_train.py && echo $NOW > /app/state/last_train_ts;
+                fi;
+                sleep 5;
+              done

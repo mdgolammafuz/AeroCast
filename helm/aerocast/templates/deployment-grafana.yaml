@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerocast-grafana
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: aerocast-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aerocast-grafana
+  template:
+    metadata:
+      labels:
+        app: aerocast-grafana
+    spec:
+      containers:
+        - name: grafana
+          image: "{{ .Values.images.grafana.repository }}:{{ .Values.images.grafana.tag }}"
+          imagePullPolicy: {{ .Values.images.grafana.pullPolicy }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.grafana.adminUser | quote }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ .Values.grafana.adminPassword | quote }}
+          ports:
+            - containerPort: 3000

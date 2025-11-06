@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aerocast-pushgateway
+  namespace: aerocast
+  labels:
+    app: aerocast-pushgateway
+spec:
+  # this must match your pod's label:
+  # in your describe you had: app=aerocast-core
+  selector:
+    app: aerocast-core
+  ports:
+    - name: http
+      port: 9091
+      targetPort: 9091
