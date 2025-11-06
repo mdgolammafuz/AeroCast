@@ -1,4 +1,3 @@
-# streaming/processing/noaa_silver_5min.py
 import os
 import shutil
 from pyspark.sql import SparkSession

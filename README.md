@@ -160,7 +160,7 @@ We then either:
 
 ---
 
-## 5. Runbook (copy/paste demo)
+## 5. Runbook (demo)
 
 ### 5.1 Start API
 
@@ -168,7 +168,7 @@ We then either:
 uvicorn serving.fastapi_app:app --reload
 ```
 
-### 5.2 Start Prometheus (your port was busy)
+### 5.2 Start Prometheus
 
 ```bash
 prometheus \

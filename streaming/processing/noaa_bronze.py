@@ -1,4 +1,3 @@
-# streaming/processing/noaa_bronze.py
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -11,6 +10,7 @@ from pyspark.sql.types import (
 )
 from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 
+PUSHGATEWAY_HOST = os.environ.get("PUSHGATEWAY_HOST", "localhost:9091")
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BRONZE_DIR = os.path.join(ROOT, "data", "processed", "noaa")
 BAD_DIR = os.path.join(ROOT, "data", "bad", "noaa")
@@ -37,7 +37,7 @@ def push_metrics(good_cnt: int, bad_cnt: int):
     if bad_cnt:
         INGEST_BAD.inc(bad_cnt)
     try:
-        push_to_gateway("localhost:9091", job="aerocast_ingest", registry=registry)
+        push_to_gateway(PUSHGATEWAY_HOST, job="aerocast_ingest", registry=registry)
     except Exception:
         pass
 

@@ -1,4 +1,3 @@
-# serving/fastapi_app.py
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 from prometheus_client import (
