@@ -1,7 +1,43 @@
-image:
-  repository: aerocast-api
-  tag: latest
-  pullPolicy: IfNotPresent
+namespace: aerocast
 
-service:
-  port: 8000
+images:
+  api:
+    repository: aerocast-api
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  worker:
+    repository: aerocast-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  pushgateway:
+    repository: prom/pushgateway
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  prometheus:
+    repository: prom/prometheus
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  grafana:
+    repository: grafana/grafana
+    tag: latest
+    pullPolicy: IfNotPresent
+
+prometheus:
+  scrapeInterval: 15s
+  apiTarget: aerocast-core:8000
+  pushgatewayTarget: aerocast-pushgateway:9091
+
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  service:
+    type: ClusterIP
+    port: 3000
+
+trainer:
+  # this is what your template wants:
+  cooldownSeconds: 60

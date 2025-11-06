@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerocast-prometheus
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: aerocast-prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aerocast-prometheus
+  template:
+    metadata:
+      labels:
+        app: aerocast-prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: "{{ .Values.images.prometheus.repository }}:{{ .Values.images.prometheus.tag }}"
+          imagePullPolicy: {{ .Values.images.prometheus.pullPolicy }}
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-data
+              mountPath: /prometheus
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: aerocast-prometheus-config
+        - name: prometheus-data
+          emptyDir: {}
