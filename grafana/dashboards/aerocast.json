@@ -1,0 +1,49 @@
+{
+  "id": null,
+  "uid": "aerocast-main",
+  "title": "AeroCast Overview",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Drift events",
+      "id": 1,
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "aerocast_drift_count",
+          "legendFormat": "drift",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Retrain count",
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "aerocast_retrain_count",
+          "legendFormat": "retrain",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Last RMSE (API reported)",
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "aerocast_last_rmse",
+          "legendFormat": "rmse",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
