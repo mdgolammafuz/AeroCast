@@ -1,171 +1,274 @@
-# AeroCast++: Real-Time Weather Forecasting Pipeline
+# AeroCast
+_self-healing, streaming, forecasty goodness_
 
-AeroCast++ is a production-grade, agentic forecasting system built with streaming ingestion (Kafka), PySpark-based batch processing, GRU sequence modeling, MLflow tracking, and DVC versioning — all orchestrated for real-time sensor data forecasting.
-
+AeroCast++ is a small-but-serious demo of how to build a real-time forecasting pipeline: streaming in, landing to storage, training a model, watching it drift, and kicking off retrains — with Prometheus/Grafana watching.
+It includes the NOAA path (realistic, stable), the simulated path (drift-on-purpose), monitoring, and the self-heal loop.
 ---
 
-## What Does AeroCast++ Do?
+## 1. High-Level Architecture
 
-It forecasts weather sensor values in real time by:
-- Ingesting sensor streams via Kafka
-- Processing and storing structured data
-- Training a GRU model for time series forecasting
-- Tracking experiments using MLflow
-- Versioning model artifacts using DVC
-- Serving forecasts via FastAPI (WIP)
+```mermaid
+flowchart LR
+    subgraph Sources
+        A1[NOAA 3-feature stream]\ntemp/wind/pressure
+        A2[Simulated heatwave]\n1D temp
+    end
 
----
+    subgraph Ingestion/Storage
+        B1[Parquet: data/processed/noaa]
+        B2[Parquet: data/processed/ (sim)]
+    end
 
-## Core Technologies
+    subgraph Processing
+        C1[Spark streaming bronze]
+        C2[Spark 5-min silver]
+    end
 
-| Component     | Tech Stack                              |
-|--------------|------------------------------------------|
-| Ingestion     | Kafka, Simulated Sensor Streams         |
-| Processing    | PySpark, Parquet Pipelines              |
-| Modeling      | PyTorch GRU                             |
-| Monitoring    | Anomaly Detection + Grafana             |
-| Logging       | MLflow                                  |
-| Versioning    | DVC                                     |
-| Serving       | FastAPI (Coming Soon)                   |
-| Cloud         | Azure Event Hub (Optional Integration)  |
+    subgraph Training
+        D1[generate_training_data.py\n(3D → CSV)]
+        D2[generate_training_data_sim.py\n(1D → CSV)]
+        D3[mlflow_gru_train.py]
+        D4[mlflow_gru_train_sim.py]
+        D5[train_prophet.py]
+    end
 
----
+    subgraph Serving
+        E1[FastAPI /predict, /eval, /routine-retrain-check]
+    end
 
-## Folder Structure
+    subgraph Monitoring
+        F1[Prometheus]
+        F2[Pushgateway]
+        F3[Grafana]
+        F4[monitoring/drift_detector.py]
+    end
 
-```bash
-.
-├── README.md
-├── api
-├── artifacts
-│   └── gru_weather_forecaster.pt
-├── cloud
-│   └── azure_eventhub_config.py
-├── data
-│   ├── checkpoints
-│   ├── parquet_loader.py
-│   ├── processed
-│   ├── raw
-│   └── simulator.py
-├── datasets
-│   ├── processed
-│   └── raw
-├── docker
-│   └── kafka
-├── docs
-│   ├── Data_Sequence_Logic.md
-│   ├── GRU_Module_Architecture.md
-│   ├── Live_Prediction_Test.md
-│   ├── README_GRU.md
-│   ├── RealTime_Predictor_Loop.md
-│   ├── kafka_startup.md
-│   ├── live_prediction_with_anomaly.md
-│   ├── mlflow_integration_explained.md
-│   ├── mlflow_loss_curve.png
-│   ├── mlflow_run_summary.png
-│   └── dvc_integration_explained.md
-├── ingestion
-├── logs
-├── model
-│   └── __init__.py
-├── monitoring
-│   ├── __init__.py
-│   ├── point_anomaly.py
-│   └── mlflow_tracking
-├── notebooks
-├── processing
-├── requirements.txt
-├── scripts
-│   └── kafka_startup.md
-├── serving
-│   └── fastapi_app.py
-├── simulator
-├── streaming
-│   ├── ingestion
-│   └── processing
-├── tests
-│   ├── gru_hook_debug.py
-│   ├── live_predictor.py
-│   └── parquet_preview.py
-├── training
-│   ├── mlflow_gru_train.py
-│   └── train_gru.py
-└── venv/ and mlruns/ excluded via .gitignore
+    A1 --> B1
+    A2 --> B2
+    B1 --> C1 --> C2
+    B1 --> D1
+    B2 --> D2
+    D3 -->|.pt| E1
+    D4 -->|.pt (sim)| E1
+    D5 -->|prophet_model.json| E1
+    E1 -->|/eval errors| F4 -->|retrain.flag| D3
+    E1 -->|/metrics| F1
+    F4 --> F2 --> F1 --> F3
 ```
 
----
-
-## MLflow Integration
-
-We integrated MLflow to track GRU training runs, log parameters, loss metrics, and visualize training progress.
-
-[See MLflow Execution Details →](docs/mlflow_integration_explained.md)
+This shows the two data shapes (NOAA 3D, sim 1D) funneling into the same serving surface.
 
 ---
 
-## DVC Versioning
+## 2. Two Pipelines
 
-Model artifacts (like trained GRU weights) are version-controlled with DVC, ensuring reproducibility and modularity.
+### 2.1 NOAA (realistic, stable)
+- Input schema:  
+  - `ts: timestamp`  
+  - `temperature: float`  
+  - `windspeed: float`  
+  - `pressure: float`  
+  - optional: `v`, `station` (we drop them)
+- Stored under: `data/processed/noaa/*.parquet`
+- CSV builder: `data/generate_training_data.py`
+- Trainer: `training/mlflow_gru_train.py`
+- Feeder: `streaming/client/live_predictor_feeder.py`
+- Drift: mostly **won't** happen → we add **routine retrain** (`/routine-retrain-check`) so the self-healing still exists.
 
-[See DVC Setup Details →](docs/dvc_integration_explained.md)
+### 2.2 Simulator (drift-on-purpose)
+- Input schema:
+  - `ts: timestamp`
+  - `temperature: float` (starts 20–30°C, then ramps)
+- Written to: `data/processed/part-*.parquet`
+- CSV builder: `data/generate_training_data_sim.py`
+- Trainer (option A): copy sim CSV over the main one and run main trainer  
+  ```bash
+  cp data/training_data_sim.csv data/training_data.csv
+  python training/mlflow_gru_train.py
+  ```
+- Trainer (option B): use the dedicated sim trainer  
+  ```bash
+  python training/mlflow_gru_train_sim.py
+  ```
+- Feeder: `streaming/client/live_predictor_feeder_sim.py`  
+  - reads 1D temp  
+  - **fabricates** windspeed and pressure so FastAPI (which expects 3D) does not break  
+  - calls `/predict` and then `/eval` to log online error  
+  - appends to `logs/prediction_history.csv` (the drift detector reads this)
 
 ---
 
-## Screenshots
+## 3. Self-Healing Loop (the story you tell)
 
-<p align="center">
-  <img src="docs/mlflow_loss_curve.png" alt="Loss Curve" width="60%">
-</p>
+```mermaid
+sequenceDiagram
+    participant Feeder
+    participant API as FastAPI
+    participant Drift as drift_detector.py
+    participant Trainer as mlflow_gru_train.py
+    participant Store as artifacts/
 
-<p align="center">
-  <img src="docs/mlflow_run_summary.png" alt="Run Summary" width="60%">
-</p>
+    Feeder->>API: POST /predict {sequence}
+    API-->>Feeder: forecast
+    Feeder->>API: POST /eval {predicted, actual}
+    API-->>Feeder: {rmse, drift_flagged}
+    Drift->>logs/prediction_history.csv: scan recent errors
+    alt COOL → HOT or high error
+        Drift->>Trainer: create retrain.flag
+        Trainer->>Trainer: read flag + reason (drift/schedule)
+        Trainer->>Store: save .pt
+        Trainer->>MLflow: log run, params, metrics, tags
+        Trainer->>API: (next reload uses new artifact)
+    end
+```
+
+- Drift detector **only** increments when we go from *cool → hot* (to avoid counter spam).
+- Retrain reason is written in the flag: `drift ...` or `schedule ...`
+- Trainer removes `retrain.flag` after consumption.
+---
+
+## 4. Data prep (schemas)
+
+### 4.1 NOAA → CSV
+- Source: `data/processed/noaa/*.parquet`
+- Expected columns: `ts, temperature, windspeed, pressure`
+- Windowed features (WINDOW=5) → columns become:
+
+```text
+t0_temp, t0_wind, t0_pressure,
+t1_temp, t1_wind, t1_pressure,
+...
+t4_temp, t4_wind, t4_pressure,
+target
+```
+
+This is what `training/mlflow_gru_train.py` expects.
+
+### 4.2 Simulator → CSV
+- Source: `data/processed/part-*.parquet`
+- Expected columns: `ts, temperature`
+- Windowed features (WINDOW=5) → columns:
+
+```text
+t0_temp, t1_temp, t2_temp, t3_temp, t4_temp, target
+```
+
+This is what `data/generate_training_data_sim.py` writes.  
+We then either:
+- overwrite `data/training_data.csv` with it, or
+- use the dedicated sim trainer.
 
 ---
 
-## FastAPI Serving
+## 5. Runbook (copy/paste demo)
 
-We expose the GRU model via a FastAPI `/predict` endpoint.
-We now serve the trained GRU model through a FastAPI endpoint:
-
-- Loads the GRU `.pt` weights once at startup
-- `/predict` POST endpoint with strict Pydantic validation (`Field(...)`)
-- Swagger UI auto-generated docs at `/docs`
-- Clear error handling (`HTTPException`) for bad inputs
-- Tested via `curl` and live Swagger console
-
-
-[Serving API Explained →](docs/serving_api_explained.md)  
-[Input Validation with `Field` →](docs/input_validation_with_field.md)
-
-### Run & Test
+### 5.1 Start API
 
 ```bash
 uvicorn serving.fastapi_app:app --reload
 ```
 
-Swagger UI: http://127.0.0.1:8000/docs
+### 5.2 Start Prometheus (your port was busy)
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/predict" \
-  -H "Content-Type: application/json" \
-  -d '{"sequence": [[22.3], [22.1], [21.9], [22.0], [22.4]]}'
+prometheus \
+  --config.file=prometheus/prometheus.yml \
+  --web.listen-address="0.0.0.0:9095" \
+  --storage.tsdb.path="/tmp/prom-aerocast"
 ```
+
+Then in Grafana → Add data source → Prometheus → URL = `http://localhost:9095`.
 
 ---
 
-## Drift Detection + Auto-Retraining
+### 5.3 Simulator drift demo
 
-AeroCast++ includes a lightweight drift detection mechanism that monitors model predictions during real-time inference.
+```bash
+# 0) clean
+rm -f retrain.flag last_retrain.txt
+rm -f data/processed/part-*.parquet
+rm -f logs/prediction_history.csv logs/last_drift_state.txt logs/last_drift.txt logs/drift_count.txt
 
-- Computes rolling prediction error (e.g., MAE).
-- Flags retraining when error exceeds a threshold.
-- Retrains GRU model automatically using `mlflow_gru_train.py`.
+# 1) collect calm data for both Prophet & GRU
+CALM_ONLY=1 python streaming/ingestion/heatwave_simulator.py
+# ... let it run 60–90s, then Ctrl+C
 
-[See Drift Detection Logic →](docs/README_drift_autoretrain.md)
+# 2) build CSV from calm
+python data/generate_training_data_sim.py
 
+# 3) train Prophet baseline
+python training/train_prophet.py
 
-## Next Steps
-- Grafana dashboard
+# 4) train GRU on same calm window
+cp data/training_data_sim.csv data/training_data.csv
+python training/mlflow_gru_train.py
 
+# 5) start simulated feeder (this hits /predict and /eval and writes logs/prediction_history.csv)
+python streaming/client/live_predictor_feeder_sim.py
 
+# 6) now start HEATWAVE version (no CALM_ONLY)
+python streaming/ingestion/heatwave_simulator.py
+
+# 7) run drift detector to turn heat into retrain.flag
+python monitoring/drift_detector.py
+
+# 8) consume the flag → retrain
+python training/mlflow_gru_train.py
+```
+
+That is the entire self-heal story.
+---
+
+## 6. Monitoring stack
+
+```mermaid
+flowchart LR
+    A[FastAPI /metrics] --> P[Prometheus 9095]
+    D[drift_detector.py \npush_to_gateway] --> PG[Pushgateway 9091] --> P
+    T[mlflow_gru_train.py \npush_to_gateway] --> PG
+    P --> G[Grafana panels]
+```
+
+Metrics we already have:
+- `predictions_total{model_type="GRU"}`
+- `aerocast_last_rmse`
+- `aerocast_predict_latency_ms`
+- `aerocast_drift_flag`
+- `aerocast_drift_count`
+- `aerocast_retrain_total`
+- `aerocast_last_retrain_ts`
+
+Screenshot 2–3 panels for the README.
+
+---
+
+## 7. Security / Prod notes
+
+- local-only demo → no secrets in code
+- `retrain.flag` is a **file-based contract** to keep processes decoupled without a message bus
+- simulator + NOAA share the **same API shape** → migration-safe
+- Prometheus/grafana exposed on localhost
+- For real prod: replace flag with topic/DB, secure Pushgateway, and run MLflow with a remote backend store.
+
+---
+
+## 8. Deployment
+
+1. **Docker Compose**: `fastapi`, `prometheus`, `grafana`, `pushgateway` → all local
+2. **Later**: add Spark/Kafka containers
+3. **Even later**: Helm chart to deploy the same services to k8s
+4. **Terraform**: only to provision infra (cluster, storage)
+---
+
+## 9. Why GRU was “flat” in testing?
+
+During testing we saw GRU output stuck around 4–6 or ~13. That happens when:
+- you trained on too few calm rows,
+- you copied a 1D CSV into the 3D trainer without changing `N_FEATS`,
+- or the artifacts folder still had the old `.pt`.
+
+In the current layout:
+- simulator → `data/training_data_sim.csv`
+- copy to main CSV → `data/training_data.csv`
+- **then** run `training/mlflow_gru_train.py` so FastAPI loads the right `.pt`.
+---
