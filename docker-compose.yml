@@ -105,6 +105,7 @@ services:
       - aerocast-state:/app/state
     environment:
       - PUSHGATEWAY_HOST=localhost:9091
+      - TRAIN_COOLDOWN=60
     command: >
       sh -c "
         python data/generate_training_data.py || true;
@@ -113,10 +114,14 @@ services:
         ln -sf /app/state/retrain.flag /app/retrain.flag &&
         ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
         while true; do
-          if [ -f /app/retrain.flag ]; then
-            python training/mlflow_gru_train.py;
+          NOW=$(date +%s);
+          LAST=0;
+          [ -f /app/state/last_train_ts ] && LAST=$(cat /app/state/last_train_ts || echo 0);
+          COOLDOWN=${TRAIN_COOLDOWN:-60};
+          if [ -f /app/retrain.flag ] && [ $((NOW - LAST)) -ge $COOLDOWN ]; then
+            python training/mlflow_gru_train.py && echo $NOW > /app/state/last_train_ts;
           fi;
-          sleep 10;
+          sleep 5;
         done
       "
     restart: unless-stopped
@@ -132,6 +137,22 @@ services:
     depends_on:
       - api
       - pushgateway
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aerocast-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
 
 volumes:
   aerocast-state:
