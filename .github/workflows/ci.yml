@@ -1,16 +1,14 @@
 name: CI
 
 on:
-  # run tests on PRs
-  pull_request:
-    branches: [ main, helm ]
-  # build/push images only on pushes to main/helm
   push:
+    branches: [ main, helm ]
+  pull_request:
     branches: [ main, helm ]
 
 permissions:
   contents: read
-  packages: write
+  packages: write   # needed to push to GHCR
 
 env:
   REGISTRY: ghcr.io
@@ -20,18 +18,9 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Make serving a package (for CI imports)
-        run: |
-          mkdir -p serving
-          if [ ! -f serving/__init__.py ]; then
-            touch serving/__init__.py
-          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,14 +34,20 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest httpx
 
+      # make sure 'serving' is an importable package
+      - name: Ensure serving is a package
+        run: |
+          mkdir -p serving
+          [ -f serving/__init__.py ] || touch serving/__init__.py
+
       - name: Run tests
+        env:
+            PYTHONPATH: .
         run: pytest -q
 
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
-    # only push images on actual pushes, not on PRs
-    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,7 +57,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API image
         uses: docker/build-push-action@v6
