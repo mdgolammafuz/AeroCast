@@ -2,12 +2,14 @@ namespace: aerocast
 
 images:
   api:
-    repository: aerocast-api
+    # you will push: ghcr.io/mdgolammafuz/aerocast-api:latest
+    repository: ghcr.io/mdgolammafuz/aerocast-api
     tag: latest
     pullPolicy: IfNotPresent
 
   worker:
-    repository: aerocast-worker
+    # you will push: ghcr.io/mdgolammafuz/aerocast-worker:latest
+    repository: ghcr.io/mdgolammafuz/aerocast-worker
     tag: latest
     pullPolicy: IfNotPresent
 
@@ -27,17 +29,14 @@ images:
     pullPolicy: IfNotPresent
 
 prometheus:
-  scrapeInterval: 15s
-  apiTarget: aerocast-core:8000
-  pushgatewayTarget: aerocast-pushgateway:9091
+  scrapeInterval: 5s
+  apiTarget: aerocast-api.aerocast.svc.cluster.local:8000
+  pushgatewayTarget: aerocast-pushgateway.aerocast.svc.cluster.local:9091
 
 grafana:
   adminUser: admin
   adminPassword: admin
-  service:
-    type: ClusterIP
-    port: 3000
 
 trainer:
-  # this is what your template wants:
+  # matches what we put in the Deployment so it doesn't retrain every 5s
   cooldownSeconds: 60

@@ -18,6 +18,7 @@ mlflow==3.1.1
 requests==2.32.4
 PyYAML==6.0.3
 python-dateutil==2.9.0.post0
+httpx==0.28.1
 
 # (optional) tests – safe for CI
 pytest==8.4.1
