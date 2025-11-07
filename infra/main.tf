@@ -5,7 +5,7 @@ terraform {
       version = "~> 2.33"
     }
     helm = {
-      source = "hashicorp/helm"
+      source  = "hashicorp/helm"
       version = "~> 2.14"
     }
   }
@@ -21,15 +21,14 @@ provider "helm" {
   }
 }
 
-resource "kubernetes_namespace" "aerocast" {
-  metadata {
-    name = "aerocast"
-  }
-}
-
+# namespace already created manually / by helm:
+# we just tell helm to use it, not create it
 resource "helm_release" "aerocast" {
   name       = "aerocast"
-  repository = "file://../helm/aerocast"
-  chart      = "aerocast"
-  namespace  = kubernetes_namespace.aerocast.metadata[0].name
+  chart      = "../helm/aerocast"
+  namespace  = "aerocast"
+  create_namespace = false
+  # don’t block forever in local/kind
+  wait    = false
+  timeout = 600
 }
