@@ -34,7 +34,15 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest httpx
 
+      # make sure 'serving' is an importable package
+      - name: Ensure serving is a package
+        run: |
+          mkdir -p serving
+          [ -f serving/__init__.py ] || touch serving/__init__.py
+
       - name: Run tests
+        env:
+            PYTHONPATH: .
         run: pytest -q
 
   build-and-push:
@@ -49,7 +57,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API image
         uses: docker/build-push-action@v6
