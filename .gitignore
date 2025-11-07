@@ -83,3 +83,9 @@ last_retrain.txt
 # --- Docs we DO want ---
 !README.md
 !docs/*.md
+
+# Terraform local state
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
