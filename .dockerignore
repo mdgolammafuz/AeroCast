@@ -1,0 +1,12 @@
+.git
+__pycache__
+.venv
+venv
+mlruns
+data
+logs
+artifacts
+.pytest_cache
+.DS_Store
+helm
+.github
