@@ -1,14 +1,16 @@
 name: CI
 
 on:
-  push:
-    branches: [ main, helm ]
+  # run tests on PRs
   pull_request:
+    branches: [ main, helm ]
+  # build/push images only on pushes to main/helm
+  push:
     branches: [ main, helm ]
 
 permissions:
   contents: read
-  packages: write   # needed to push to GHCR
+  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -18,9 +20,18 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Make serving a package (for CI imports)
+        run: |
+          mkdir -p serving
+          if [ ! -f serving/__init__.py ]; then
+            touch serving/__init__.py
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -40,6 +51,8 @@ jobs:
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
+    # only push images on actual pushes, not on PRs
+    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
