@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [ main, helm ]
 
+permissions:
+  contents: read
+  packages: write   # needed to push to GHCR
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ghcr.io/mdgolammafuz/aerocast-api:latest
+  IMAGE_WORKER: ghcr.io/mdgolammafuz/aerocast-worker:latest
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -26,6 +35,34 @@ jobs:
           pip install pytest httpx
 
       - name: Run tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}
         run: pytest -q
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: ${{ env.IMAGE_API }}
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: ${{ env.IMAGE_WORKER }}
