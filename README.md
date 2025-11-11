@@ -84,20 +84,19 @@ This is the minimal, observable checklist.
 ---
 
 ## 3. High-level architecture
-
 ```mermaid
 flowchart TD
     subgraph Sources
-        A[NOAA-like stream<br/>(ts, temperature, windspeed, pressure)]
-        B[Simulated drift stream<br/>(ts, temperature)]
+        A[NOAA stream]
+        B[Simulated drift stream]
     end
 
     subgraph Storage
-        C[data/processed/*.parquet]
+        C[data/processed parquet]
     end
 
     subgraph Processing
-        P1[Spark / PySpark style processing<br/>bronze → silver]
+        P1[Spark style processing bronze to silver]
     end
 
     subgraph Training
@@ -108,7 +107,7 @@ flowchart TD
     end
 
     subgraph Serving
-        S[FastAPI: /predict /eval /routine-retrain-check /metrics]
+        S[FastAPI: predict eval routine-retrain-check metrics]
     end
 
     subgraph Monitoring
@@ -126,11 +125,10 @@ flowchart TD
     T2 --> T3
     T4 --> S
     S --> M1
-    M1 -->|"write retrain.flag"| T3
-    S -->|"export metrics"| M3
+    M1 -->|write retrain.flag| T3
+    S -->|export metrics| M3
     M1 --> M2 --> M3 --> M4
 ```
-
 Two data shapes, one serving plane, with monitoring and retrain in the loop.
 
 ---
@@ -371,7 +369,6 @@ Current layout makes the flow explicit:
 - FastAPI will serve the refreshed artifact.
 
 ---
-
 ## 13. Security / production notes
 
 - no secrets committed,
@@ -382,6 +379,70 @@ Current layout makes the flow explicit:
 
 ---
 
+## 14. GDPR / Data Protection Notes
+
+This repository is built and tested against synthetic and public-weather–style data. In its current form it does not intend to process personal data. That said, the moment this pipeline is pointed at real operational streams that contain identifiers or anything user-related, the following applies.
+
+1. Data categories
+    - Current demo: time series (timestamps, temperature, windspeed, pressure), model artifacts, and operational metrics. No names, emails, IPs, device IDs, or location traces.
+
+    - If you add user or device context to the stream, that becomes personal data under GDPR and the rest of this section becomes mandatory.
+
+2. Purpose limitation
+
+    - The pipeline is designed for forecasting + model maintenance (drift → retrain).
+
+    - Do not reuse collected data for unrelated analytics without documenting a new purpose.
+
+3. Data minimization
+
+    - Keep only the columns required to build the time window (ts + numerical features).
+
+    - Drop free-text or high-cardinality IDs unless they are needed for reconciliation.
+
+    - If personal or quasi-personal fields arrive on the topic/stream, strip them in the ingestion step before writing to data/processed/....
+
+4. Storage and retention
+
+    - Parquet under data/processed/... and CSVs under data/ are kept for convenience. In a real environment, define retention (e.g. 30–90 days for raw, longer for aggregates).
+
+    - Generated artifacts in artifacts/ (GRU, Prophet) may encode training data characteristics. Treat them as data-bearing and subject to rotation.
+
+5. Logging and monitoring
+
+    - The current setup logs to logs/ and exposes Prometheus metrics. These should not contain personal data.
+
+    - If you add per-user evaluation or per-device metrics, either aggregate them before exporting or scrub identifiers.
+
+6. Data subject rights
+
+    - If personal data ever lands in storage, you must be able to:
+
+      - locate it (which table/file/bucket),
+
+      - delete it on request, and
+
+      - retrain or mark old models as using pre-deletion data.
+
+    - Because this project uses simple file-based retrain triggers (retrain.flag), the cleanest approach is “delete → regenerate training CSV → retrain → replace artifact”.
+
+7. Transfers and hosting
+
+    - This demo assumes local/docker/k8s. In production, document where Prometheus, Grafana, and MLflow are hosted, and whether data leaves the EEA.
+
+    - If you push images to GHCR, that’s code and config, not personal data — don’t bake secrets or PII into images.
+
+8. Security basics
+
+    - Add auth in front of FastAPI, Prometheus, and Grafana in any non-local setup.
+
+    - Don’t commit real API keys, secrets, or customer data samples.
+
+9. Accountability
+
+    - If this is adopted in a real org with real data, run a short DPIA/records-of-processing note: “time-series ingestion for forecasting; retention X; access Y; legal basis Z”.
+
+---
 ## 14. License
 
 This project is licensed under the **MIT License**.
