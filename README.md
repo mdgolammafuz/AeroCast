@@ -132,6 +132,23 @@ flowchart TD
 Two data shapes, one serving plane, with monitoring and retrain in the loop.
 
 ---
+## Performance & Benchmarks
+
+### Forecast Accuracy – NOAA (Chicago O’Hare, 2024)
+
+1-step ahead hourly temperature, window = 24h  
+Train: Jan–Sep 2024, Test: Oct–Dec 2024 (station USW00094846, LCD dataset).
+
+| Model                    | RMSE (°F) |
+|--------------------------|----------:|
+| **GRU (AeroCast)**       | **0.67**  |
+| Naive (last value)       | 0.77      |
+| Prophet (hourly, default)| 13.76     |
+
+
+*Prophet baseline:* Prophet performs poorly on this hourly 1-step-ahead setup (RMSE ≈ 13.8°F). It is optimized for smooth trend + seasonality rather than short-horizon, persistence-dominated forecasting, so we treat it as a non-competitive reference and focus on GRU vs naive.
+
+---
 
 ## 4. Two pipelines
 

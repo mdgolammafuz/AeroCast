@@ -1,0 +1,19 @@
+{
+  "station": "USW00094846",
+  "year": 2024,
+  "window_months_total": 12,
+  "train_months": 9,
+  "test_months": 3,
+  "window": 24,
+  "models": {
+    "GRU": {
+      "rmse": 0.6657297737314393
+    },
+    "Naive": {
+      "rmse": 0.7725397462359019
+    },
+    "Prophet": {
+      "rmse": 13.75572636264155
+    }
+  }
+}

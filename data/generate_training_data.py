@@ -29,9 +29,29 @@ def _collect_parquets() -> pd.DataFrame:
     dfs = [pd.read_parquet(f) for f in sorted(files)]
     df = pd.concat(dfs, ignore_index=True)
 
-    for col in ["v", "station"]:
-        if col in df.columns:
-            df = df.drop(columns=[col])
+    # ---- station-aware filtering (NEW) ----
+    station_id = os.environ.get("AEROCAST_NOAA_STATION")
+    if "station" in df.columns:
+        if not station_id:
+            raise RuntimeError(
+                "AEROCAST_NOAA_STATION is not set but 'station' column exists in NOAA data. "
+                "Set AEROCAST_NOAA_STATION to the station id you want to train on."
+            )
+        df = df[df["station"] == station_id].copy()
+        if df.empty:
+            raise RuntimeError(
+                f"No rows found for station '{station_id}' in NOAA parquet files."
+            )
+        # drop station column after filtering
+        df = df.drop(columns=["station"])
+    else:
+        # if there's no station column, we silently train on whatever is there
+        # (e.g. per-station-directory layout). That's fine.
+        pass
+
+    # drop any extra "v" column if present
+    if "v" in df.columns:
+        df = df.drop(columns=["v"])
 
     if "ts" not in df.columns:
         raise ValueError("expected 'ts' column in parquet data")
@@ -78,7 +98,10 @@ def build_training_csv():
     out_df = pd.DataFrame(rows, columns=cols)
     os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
     out_df.to_csv(OUT_CSV, index=False)
-    print(f"[generate_training_data] wrote {len(out_df)} rows to {OUT_CSV}")
+    print(
+        f"[generate_training_data] station={os.environ.get('AEROCAST_NOAA_STATION', 'UNSPECIFIED')} "
+        f"rows={len(out_df)} -> {OUT_CSV}"
+    )
 
 
 if __name__ == "__main__":

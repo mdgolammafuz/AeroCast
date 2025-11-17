@@ -14,6 +14,9 @@ services:
       - ./logs:/app/logs
       - ./artifacts:/app/artifacts
       - aerocast-state:/app/state
+    environment:
+      # Set this to the NOAA station id you want this deployment to use
+      - AEROCAST_NOAA_STATION=CHANGE_ME_STATION_ID
     command: >
       sh -c "
         mkdir -p /app/state &&
@@ -106,6 +109,8 @@ services:
     environment:
       - PUSHGATEWAY_HOST=localhost:9091
       - TRAIN_COOLDOWN=60
+      # same station id used for training data
+      - AEROCAST_NOAA_STATION=CHANGE_ME_STATION_ID
     command: >
       sh -c "
         python data/generate_training_data.py || true;

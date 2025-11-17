@@ -78,9 +78,19 @@ def _latest_parquet_df() -> pd.DataFrame:
     newest = max(files, key=os.path.getmtime)
     df = pd.read_parquet(newest)
 
-    for col in ("v", "station"):
-        if col in df.columns:
-            df = df.drop(columns=[col])
+    # station-aware view for /latest (same env var as training)
+    station_id = os.environ.get("AEROCAST_NOAA_STATION")
+    if station_id and "station" in df.columns:
+        df = df[df["station"] == station_id].copy()
+        if df.empty:
+            raise FileNotFoundError(
+                f"no rows for station {station_id} in latest parquet file {newest}"
+            )
+        df = df.drop(columns=["station"])
+
+    # drop any extra column 'v' if present
+    if "v" in df.columns:
+        df = df.drop(columns=["v"])
 
     if "ts" in df.columns:
         df["ts"] = pd.to_datetime(df["ts"])
