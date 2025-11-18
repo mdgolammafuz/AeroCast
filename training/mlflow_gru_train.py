@@ -52,7 +52,7 @@ LAST_RETRAIN_TS = Gauge(
     registry=registry,
 )
 
-WINDOW = 5
+WINDOW = 24
 N_FEATS = 3
 MODEL_NAME = "AeroCast-GRU-Model"
 
@@ -119,7 +119,7 @@ def train():
         mlflow.log_param("input_dim", N_FEATS)
         mlflow.log_param("window", WINDOW)
 
-        for epoch in range(5):
+        for epoch in range(30):
             model.train()
             tot = 0.0
             for X, y in loader:

@@ -18,9 +18,8 @@ LOG_DIR = os.path.join(ROOT, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "prediction_history.csv")
 os.makedirs(LOG_DIR, exist_ok=True)
 
-WINDOW = 5  # same as model/API
+WINDOW = 24  # same as model/API
 
-# prophet helper from your repo
 try:
     from utils.prophet_helper import load_prophet_model, forecast_next
     _PROPhet = load_prophet_model(os.path.join(ROOT, "artifacts", "prophet_model.json"))
@@ -37,14 +36,14 @@ def ensure_header():
             f.write("timestamp,sequence,forecast,actual,error,model\n")
 
 
-def _latest_parquet_files(n=10):
+def _latest_parquet_files(n=50):
     files = glob.glob(os.path.join(PARQUET_DIR, "part-*.parquet"))
     files = [f for f in files if os.path.getsize(f) > 0]
     files.sort(key=os.path.getmtime)
     return files[-n:]
 
 
-def load_last_n_rows(n=5) -> pd.DataFrame:
+def load_last_n_rows(n=50) -> pd.DataFrame:
     files = _latest_parquet_files(n)
     if not files:
         raise FileNotFoundError("no simulator parquet files yet in data/processed/")
@@ -73,7 +72,7 @@ def main():
 
     while True:
         try:
-            df_latest = load_last_n_rows(20)
+            df_latest = load_last_n_rows(200)
         except FileNotFoundError:
             print("[Feeder-SIM] waiting for simulator parquet…")
             time.sleep(3)
@@ -87,7 +86,6 @@ def main():
         window_df = df_latest.iloc[-WINDOW:]
         actual = float(window_df.iloc[-1]["temperature"])
 
-        # 3D fake for NOAA-style API
         seq = []
         for _, r in window_df.iterrows():
             temp = float(r["temperature"])
@@ -97,7 +95,6 @@ def main():
                 101000.0,  # fake pressure
             ])
 
-        # 1) GRU via API
         try:
             resp = requests.post(API_URL, json={"sequence": seq}, timeout=5)
             resp.raise_for_status()
@@ -112,11 +109,8 @@ def main():
         append_row(ts, seq, gru_fc, actual, gru_err, "GRU")
         print(f"[Feeder-SIM] {ts} GRU={gru_fc:.2f} actual={actual:.2f} err={gru_err:.2f}")
 
-        # 2) Prophet locally (for Grafana baseline)
         if HAS_PROPHET:
             try:
-                # prophet wants the full recent df, not the faked 3D
-                # we already have df_latest above
                 prophet_fc = forecast_next(df_latest, _PROPhet, freq="5s")
                 prophet_err = abs(prophet_fc - actual)
                 append_row(ts, "[prophet]", prophet_fc, actual, prophet_err, "Prophet")

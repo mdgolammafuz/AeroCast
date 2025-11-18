@@ -18,7 +18,7 @@ CSV = os.path.join(ROOT, "data", "training_data_sim.csv")
 FLAG = os.path.join(ROOT, "retrain.flag")
 LAST_RETRAIN_FILE = os.path.join(ROOT, "last_retrain.txt")
 
-WINDOW = 5
+WINDOW = 24
 N_FEATS = 3              # match API + fake 3D
 MODEL_NAME = "AeroCast-GRU-SIM"
 
@@ -64,7 +64,7 @@ def train():
         mlflow.log_param("window", WINDOW)
         mlflow.log_param("input_dim", N_FEATS)
 
-        for epoch in range(5):
+        for epoch in range(30):
             tot = 0.0
             for X, y in loader:
                 opt.zero_grad()
@@ -76,7 +76,6 @@ def train():
             mlflow.log_metric("loss", tot / len(loader), step=epoch)
 
         os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
-        # IMPORTANT: overwrite the SAME file the API loads
         torch.save(
             model.state_dict(),
             os.path.join(ROOT, "artifacts", "gru_weather_forecaster.pt"),

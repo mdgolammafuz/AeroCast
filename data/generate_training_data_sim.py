@@ -6,7 +6,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUT_CSV = os.path.join(ROOT, "data", "training_data_sim.csv")
 
 PARQUET_DIR = os.path.join(ROOT, "data", "processed")  # simulator output
-WINDOW = 5
+WINDOW = 24
 TARGET_COL = "temperature"
 
 

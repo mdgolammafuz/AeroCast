@@ -90,3 +90,5 @@ infra/.terraform.lock.hcl
 infra/terraform.tfstate
 infra/terraform.tfstate.backup
 
+# benchmark run artifacts
+bench/drift_eval.json

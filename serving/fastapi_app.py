@@ -45,7 +45,7 @@ app = FastAPI(title="AeroCast++ API", version="1.0")
 
 
 class SequenceIn(BaseModel):
-    sequence: list[list[float]] = Field(..., min_items=5)
+    sequence: list[list[float]] = Field(..., min_items=24)
 
 
 class EvalPayload(BaseModel):
