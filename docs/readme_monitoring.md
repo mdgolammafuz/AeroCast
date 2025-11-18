@@ -1,4 +1,4 @@
-# AeroCast++: Monitoring & Metrics with Prometheus + Grafana
+# AeroCast: Monitoring & Metrics with Prometheus + Grafana
 
 > This standalone file explains everything related to **Prometheus**, **PushGateway**, **Grafana**, and how metrics are collected from **FastAPI** and **GRU training scripts**.
 

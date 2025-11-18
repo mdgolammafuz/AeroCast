@@ -75,20 +75,6 @@ Visit: `http://127.0.0.1:5000`
 
 ---
 
-## UI Screenshot Examples
-
-### Run Summary Page
-Shows parameters, metrics, run metadata:
-
-![Run Summary](docs/mlflow_run_summary.png)
-
-### Loss Curve Visualization
-Loss per epoch (logged manually or as artifact):
-
-![Loss Curve](docs/mlflow_loss_curve.png)
-
----
-
 ## Key Lessons Learned
 
 | Insight | Explanation |

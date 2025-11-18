@@ -1,5 +1,5 @@
 
-# GRU Weather Forecaster – Internal Module of AeroCast++
+# GRU Weather Forecaster – Internal Module of AeroCast
 
 > Predicting tomorrow’s temperature using 10 days of weather sequences  
 > Powered by PyTorch GRU | Deployed as part of AeroCast’s real-time forecasting pipeline

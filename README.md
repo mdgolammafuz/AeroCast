@@ -1,5 +1,5 @@
 # AeroCast
-AeroCast is a small-but-serious real-time forecasting pipeline: streaming in, landing to storage, training a model, watching it drift, and kicking off retrains — with Prometheus/Grafana watching. It includes the NOAA path (realistic, stable), the simulated path (drift-on-purpose), monitoring, and the self-heal loop.
+AeroCast is a real-time forecasting pipeline: streaming data in, landing it to storage, training a model, monitoring it for drift, and triggering retrains — with Prometheus/Grafana watching the whole loop. It includes the NOAA path (realistic, stable), the simulated path (drift-on-purpose), monitoring, and the self-heal loop.
 
 --
 - streaming-style ingestion (realistic and simulated),
@@ -84,6 +84,7 @@ This is the minimal, observable checklist.
 ---
 
 ## 3. High-level architecture
+
 ```mermaid
 flowchart TD
     subgraph Sources
@@ -132,19 +133,95 @@ flowchart TD
 Two data shapes, one serving plane, with monitoring and retrain in the loop.
 
 ---
-## Performance & Benchmarks
+
+## 4. Business Impact (Projected)
+
+### Problem
+
+In many teams, short-term forecasting still looks like this:
+- Analysts pull raw data into Excel or a notebook,
+- Fit a quick model or eyeball a trend,
+- Deploy nothing, and revisit everything when behavior drifts.
+
+That leads to:
+- Hours of manual work per forecast,
+- Silent model degradation when the underlying process changes,
+- No audit trail for “who changed what, when”.
+
+### What AeroCast Automates
+
+AeroCast wires together:
+
+- Streaming ingestion (NOAA or simulated feed),
+- A GRU-based forecaster served behind FastAPI,
+- Drift detection on recent prediction errors,
+- A retrain loop (flag → retrain script → new weights),
+- Prometheus + Grafana for live metrics.
+
+So instead of hand-built one-off forecasts, you get a small, always-on forecasting service with guardrails.
+
+### Example Time & Cost Impact (Illustrative)
+
+Take a team that produces a weekly short-term forecast (e.g. demand, load, or capacity):
+
+- Manual workflow:
+  - ~2.5 hours per forecast (data prep + modeling + reporting),
+  - 52 forecasts/year → ~130 hours/analyst/year.
+
+- With AeroCast-style automation:
+  - Forecast generation is automatic,
+  - Human time is mostly review and interpretation, say ~0.5 hours/week,
+  - ~26 hours/analyst/year.
+
+**Time saved (per analyst):**  
+≈100 hours/year.  
+At an all-in cost of €60/hour, that’s ≈€6,000/analyst/year.  
+For 3 analysts: ≈€18,000/year.
+
+### System Cost (Rough Order of Magnitude)
+
+For a small-team deployment you can stay roughly in this range:
+
+- 1× FastAPI service + 1× Prometheus + 1× Grafana on a small cloud instance,
+- Optional small Kafka / message broker, or just HTTP ingestion,
+- Object storage for parquet history.
+
+Using EU cloud pricing (Hetzner / small AWS EC2 + S3), a realistic budget for a low-traffic deployment is on the order of **€1,000–€1,500/year**.
+
+That’s not a production cost model, but it shows the **direction**: one small service can realistically pay for itself with a few hours of analyst time saved per month.
+
+---
+
+## 5. Performance & Benchmarks
 
 ### Forecast Accuracy – NOAA (Chicago O’Hare, 2024)
+Data:
 
-1-step ahead hourly temperature, window = 24h  
-Train: Jan–Sep 2024, Test: Oct–Dec 2024 (station USW00094846, LCD dataset).
+- Source: NOAA Local Climatological Data (LCD v2)
+- Station: USW00094846 (Chicago O’Hare)
+- Year: 2024
+- Train: first ~9 months
+- Test: last 3 months
+- Features: temperature + time-of-day / day-of-week signals
+- Horizon: next-step forecast with a 24-hour window
 
-| Model                    | RMSE (°F) |
-|--------------------------|----------:|
-| **GRU (AeroCast)**       | **0.67**  |
-| Naive (last value)       | 0.77      |
-| Prophet (hourly, default)| 13.76     |
+Models:
 
+- GRU (this repo)
+- Naive (last value)
+- Prophet (hourly config)
+
+Results (test period):
+
+| Model                     | RMSE (°F) | Notes                                 |
+|---------------------------|----------:|----------------------------------------|
+| **GRU (AeroCast)**        | **≈0.67** | 24h context, simple GRU, no tuning     |
+| Naive (last temperature)  | ≈0.77     | Strong baseline for smooth series      |
+| Prophet                   | ≈13.8     | Mis-specified for this setup (hourly)  |
+
+The GRU beats a strong naive baseline on this real-weather slice. Prophet performs poorly here with the current configuration, which is why AeroCast treats Prophet as an *optional* baseline, not the primary model.
+
+The exact JSON output lives in `bench/accuracy_noaa_sample.json`.
 
 *Prophet baseline:* Prophet performs poorly on this hourly 1-step-ahead setup (RMSE ≈ 13.8°F). It is optimized for smooth trend + seasonality rather than short-horizon, persistence-dominated forecasting, so we treat it as a non-competitive reference and focus on GRU vs naive.
 
@@ -183,13 +260,13 @@ On a single COOL→HOT episode, `scripts/eval_drift_sim.py` produced
 
 This is a small, controlled demo, not a full ROC study – its purpose is to show
 that the detector actually fires when the simulated heatwave hits and does not
-spam alerts during the calm period.
+raise alerts unnecessarily during the calm period.
 
 ---
 
-## 4. Two pipelines
+## 6. Two pipelines
 
-### 4.1 NOAA-like (stable)
+### 6.1 NOAA-like (stable)
 - Schema:
   - `ts: timestamp`
   - `temperature: float`
@@ -200,7 +277,7 @@ spam alerts during the calm period.
 - Trainer: `training/mlflow_gru_train.py`
 - Even though the data is stable, the API still exposes `/routine-retrain-check` so the loop can stay active.
 
-### 4.2 Simulator (drift-on-purpose)
+### 6.2 Simulator (drift-on-purpose)
 - Schema:
   - `ts: timestamp`
   - `temperature: float`
@@ -220,7 +297,7 @@ spam alerts during the calm period.
 
 ---
 
-## 5. Runbook (demo)
+## 7. Runbook (demo)
 
 This is the end-to-end demo path.
 
@@ -261,7 +338,7 @@ This path shows the “state-aware” nature: ingestion → model use → error 
 
 ---
 
-## 6. Self-healing loop
+## 8. Self-healing loop
 
 ```mermaid
 sequenceDiagram
@@ -291,7 +368,7 @@ sequenceDiagram
 
 ---
 
-## 7. Serving (FastAPI)
+## 9. Serving (FastAPI)
 
 Entrypoint:
 
@@ -310,7 +387,7 @@ Tested in CI with `pytest` and `httpx` (Starlette TestClient requires `httpx`).
 
 ---
 
-## 8. Streaming / Kafka / Spark
+## 10. Streaming / Kafka / Spark
 
 - `streaming/ingestion/` and `streaming/processing/` mimic a Kafka/Spark ingestion path landing parquet under `data/processed/`.
 - Folder structure under `data/` shows bronze/silver style layers, which is common in Spark or Delta pipelines.
@@ -321,9 +398,9 @@ Tested in CI with `pytest` and `httpx` (Starlette TestClient requires `httpx`).
 
 ---
 
-## 9. Data prep (schemas)
+## 11. Data prep (schemas)
 
-### 9.1 NOAA → CSV
+### 11.1 NOAA → CSV
 Source: `data/processed/noaa/*.parquet`  
 Expected columns: `ts, temperature, windspeed, pressure`  
 Windowed (e.g. 5 steps):
@@ -339,7 +416,7 @@ target
 
 This is exactly what `training/mlflow_gru_train.py` consumes.
 
-### 9.2 Simulator → CSV
+### 11.2 Simulator → CSV
 Source: `data/processed/part-*.parquet`  
 Expected columns: `ts, temperature`  
 Windowed (5 steps):
@@ -353,9 +430,9 @@ After that, either copy to the main CSV or call the sim trainer.
 
 ---
 
-## 10. Deployment options
+## 12. Deployment options
 
-### 10.1 Local (compose)
+### 12.1 Local (compose)
 - start everything:
   ```bash
   docker compose up
@@ -366,7 +443,7 @@ After that, either copy to the main CSV or call the sim trainer.
   curl http://localhost:8000/metrics
   ```
 
-### 10.2 Kubernetes (Helm)
+### 12.2 Kubernetes (Helm)
 - chart is in `helm/aerocast`
 - install / upgrade:
   ```bash
@@ -375,7 +452,7 @@ After that, either copy to the main CSV or call the sim trainer.
   ```
 - port-forward to test API, Grafana, Prometheus.
 
-### 10.3 Terraform (IaC wrapper)
+### 12.3 Terraform (IaC wrapper)
 - file: `infra/main.tf`
 - providers: `kubernetes` and `helm`
 - applies the local chart from `../helm/aerocast` into the `aerocast` namespace
@@ -389,7 +466,7 @@ After that, either copy to the main CSV or call the sim trainer.
 
 ---
 
-## 11. CI
+## 13. CI
 
 Single workflow to keep things predictable: `.github/workflows/ci.yml`
 
@@ -407,8 +484,6 @@ Extra docker-only workflows were removed to avoid parallel duplicate runs.
 
 ---
 
-
-
 A flat forecast band was observed during development. Probable causes:
 
 1. training performed on a very short calm window → model learned a constant;
@@ -423,7 +498,8 @@ Current layout makes the flow explicit:
 - FastAPI will serve the refreshed artifact.
 
 ---
-## 12. Security / production notes
+
+## 14. Security / production notes
 
 - no secrets committed,
 - `retrain.flag` is a local-file contract; a production system would move this to a message bus or DB,
@@ -433,7 +509,10 @@ Current layout makes the flow explicit:
 
 ---
 
-## 13. GDPR / Data Protection Notes
+## 15. GDPR / Data Protection Notes
+
+> For EU / German deployments, see also **Section 16** on data residency and auditability.  
+> This section focuses specifically on what happens the moment personal data enters the pipeline.
 
 This repository is built and tested against synthetic and public-weather–style data. In its current form it does not intend to process personal data. That said, the moment this pipeline is pointed at real operational streams that contain identifiers or anything user-related, the following applies.
 
@@ -497,7 +576,38 @@ This repository is built and tested against synthetic and public-weather–style
     - If this is adopted in a real org with real data, run a short DPIA/records-of-processing note: “time-series ingestion for forecasting; retention X; access Y; legal basis Z”.
 
 ---
-## 14. License
+
+## 16. EU / German Deployment Notes
+
+This repo runs locally by default and uses either synthetic time series or public NOAA-style weather data. There is no personal data in the demo setup.
+
+For a real deployment in a German / EU context, the main points are:
+
+- **Data residency**
+  - Run the stack in an EU region (e.g. Hetzner, AWS `eu-central-1`, GCP `europe-west3`).
+  - Keep parquet history, Prometheus TSDB, and model artifacts in the same region.
+  - Avoid exporting raw logs or time series outside the EEA.
+
+- **Auditability**
+  - Parquet under `data/processed/...` plus `logs/` already form an audit trail of:
+    - raw inputs,
+    - model predictions,
+    - drift detections and retrains.
+  - With longer retention and access controls, this is a good starting point for
+    “Nachvollziehbarkeit” as expected by HGB / GoBD style record-keeping.
+
+- **Privacy / personal data**
+  - The demo assumes pure time-series (temperature, etc.).  
+  - If you add user or device identifiers, everything in **“15. GDPR / Data Protection Notes”** becomes mandatory:
+    retention, deletion, access logs, and model retraining after erasure.
+
+- **Positioning**
+  - AeroCast is a **technical reference implementation** for streaming forecasts with drift detection.
+  - It is **not** sold as a ready-made BaFin- or GoBD-certified product; any real rollout needs an org-specific legal and DPIA review.
+
+---
+
+## 17. License
 
 This project is licensed under the **MIT License**.
 

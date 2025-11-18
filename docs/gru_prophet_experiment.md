@@ -1,4 +1,4 @@
-# AeroCast++: GRU vs Prophet Experimental Design
+# AeroCast: GRU vs Prophet Experimental Design
 
 > This file documents the experimental design comparing **GRU** and **Prophet** models on both calm and heatwave datasets. It includes setup, criteria for drift, logging, and evaluation.
 

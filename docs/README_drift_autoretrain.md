@@ -1,5 +1,5 @@
 
-# Drift Detection and Auto-Retraining in AeroCast++
+# Drift Detection and Auto-Retraining in AeroCast
 
 This module adds a simple, production-aware mechanism for detecting model drift and automatically triggering retraining.
 
