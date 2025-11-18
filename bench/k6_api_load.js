@@ -1,8 +1,7 @@
 import http from "k6/http";
 import { check, sleep } from "k6";
-import { Trend, Rate } from "k6/metrics";
 
-export let options = {
+export const options = {
   stages: [
     { duration: "10s", target: 10 },
     { duration: "20s", target: 50 },
@@ -10,30 +9,34 @@ export let options = {
   ],
 };
 
-const latencyMs = new Trend("latency_ms");
-const successRate = new Rate("success_rate");
+const BASE_URL = "http://localhost:8000";
 
-function makeSequence() {
+// match the FastAPI /predict schema: { "sequence": [[temp, windspeed, pressure], ...] }
+function makeSequence(windowSize = 24) {
   const seq = [];
-  for (let i = 0; i < 5; i++) {
-    seq.push([25.0, 5.0, 101000.0]); // [temp, wind, pressure]
+  for (let i = 0; i < windowSize; i++) {
+    // use realistic but constant-ish values; model doesn’t care for load test
+    seq.push([25.0, 5.0, 101000.0]);
   }
   return seq;
 }
 
 export default function () {
-  const url = __ENV.AEROCAST_URL || "http://localhost:8000/predict";
-  const payload = JSON.stringify({ sequence: makeSequence() });
-  const params = { headers: { "Content-Type": "application/json" } };
+  const payload = JSON.stringify({
+    sequence: makeSequence(24),
+  });
 
-  const res = http.post(url, payload, params);
+  const params = {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  };
 
-  const ok = check(res, {
+  const res = http.post(`${BASE_URL}/predict`, payload, params);
+
+  check(res, {
     "status is 200": (r) => r.status === 200,
   });
 
-  successRate.add(ok);
-  latencyMs.add(res.timings.duration);
-
-  sleep(0.1);
+  sleep(0.1); // tiny pause so we don’t go completely bonkers
 }

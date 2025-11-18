@@ -1,0 +1,10 @@
+{
+  "tp": 1,
+  "fp": 0,
+  "fn": 0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "avg_latency_minutes": 0.09928669999999999,
+  "threshold": 38.0,
+  "window_used_by_detector": 6
+}

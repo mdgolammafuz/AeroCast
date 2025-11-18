@@ -148,6 +148,43 @@ Train: Jan–Sep 2024, Test: Oct–Dec 2024 (station USW00094846, LCD dataset).
 
 *Prophet baseline:* Prophet performs poorly on this hourly 1-step-ahead setup (RMSE ≈ 13.8°F). It is optimized for smooth trend + seasonality rather than short-horizon, persistence-dominated forecasting, so we treat it as a non-competitive reference and focus on GRU vs naive.
 
+### Prediction API performance (local k6 run)
+
+We ran a k6 load test against the `/predict` endpoint on a single Uvicorn worker
+(local laptop, 50 VUs, 40s, JSON body with a 24-step sequence).
+
+From `bench/k6_summary.json`:
+
+- **Throughput:** ~206 requests/second (8.2k requests over 40 seconds)
+- **p95 latency:** ~20 ms
+- **Error rate:** 0% (all responses HTTP 200, single endpoint)
+
+These numbers are from a local dev environment, but they show that the FastAPI +
+GRU prediction endpoint stays well under 50 ms p95 even under moderate concurrent
+load.
+
+### Simulated drift detection (heatwave demo)
+
+For the synthetic drift demo we use a 1D temperature stream (calm → heatwave)
+and a simple rule-based detector:
+
+- Drift is defined as the 6-point rolling mean of temperature crossing **38 °C**.
+- The detector scans `logs/prediction_history.csv` every few seconds and logs
+  events to `logs/drift.log`.
+
+On a single COOL→HOT episode, `scripts/eval_drift_sim.py` produced
+`bench/drift_eval.json`:
+
+- **True Positives:** 1
+- **False Positives:** 0
+- **False Negatives:** 0
+- **Precision / Recall:** 1.0 / 1.0 (for this run)
+- **Average detection latency:** ~0.1 minutes (~6 seconds)
+
+This is a small, controlled demo, not a full ROC study – its purpose is to show
+that the detector actually fires when the simulated heatwave hits and does not
+spam alerts during the calm period.
+
 ---
 
 ## 4. Two pipelines
@@ -370,7 +407,7 @@ Extra docker-only workflows were removed to avoid parallel duplicate runs.
 
 ---
 
-## 12. “Flat” GRU output note
+
 
 A flat forecast band was observed during development. Probable causes:
 
@@ -386,7 +423,7 @@ Current layout makes the flow explicit:
 - FastAPI will serve the refreshed artifact.
 
 ---
-## 13. Security / production notes
+## 12. Security / production notes
 
 - no secrets committed,
 - `retrain.flag` is a local-file contract; a production system would move this to a message bus or DB,
@@ -396,7 +433,7 @@ Current layout makes the flow explicit:
 
 ---
 
-## 14. GDPR / Data Protection Notes
+## 13. GDPR / Data Protection Notes
 
 This repository is built and tested against synthetic and public-weather–style data. In its current form it does not intend to process personal data. That said, the moment this pipeline is pointed at real operational streams that contain identifiers or anything user-related, the following applies.
 

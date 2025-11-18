@@ -91,4 +91,4 @@ infra/terraform.tfstate
 infra/terraform.tfstate.backup
 
 # benchmark run artifacts
-bench/drift_eval.json
+k6_summary_raw.json
