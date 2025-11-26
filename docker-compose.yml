@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   api:
     build:
@@ -15,18 +13,18 @@ services:
       - ./artifacts:/app/artifacts
       - aerocast-state:/app/state
     environment:
-      # Set this to the NOAA station id you want this deployment to use
       - AEROCAST_NOAA_STATION=CHANGE_ME_STATION_ID
     command: >
       sh -c "
         mkdir -p /app/state &&
-        # create only the timestamp file, NOT the retrain flag
         touch /app/state/last_retrain.txt &&
         ln -sf /app/state/retrain.flag /app/retrain.flag &&
         ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
         uvicorn serving.fastapi_app:app --host 0.0.0.0 --port 8000
       "
     restart: unless-stopped
+    networks:
+      - aeronet
 
   feeder:
     build:
@@ -34,8 +32,6 @@ services:
       dockerfile: Dockerfile.worker
     image: aerocast-worker:latest
     container_name: aerocast-feeder
-    # feeder assumes http://localhost:8000 → share API's network
-    network_mode: "service:api"
     depends_on:
       - api
     volumes:
@@ -49,13 +45,15 @@ services:
         touch /app/state/last_retrain.txt &&
         ln -sf /app/state/retrain.flag /app/retrain.flag &&
         ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
-        until curl -s http://localhost:8000/healthz > /dev/null; do
+        until curl -s http://api:8000/healthz > /dev/null; do
           echo 'waiting for API...';
           sleep 2;
         done;
-        python streaming/client/live_predictor_feeder.py
+        python streaming/client/live_predictor_feeder_sim.py
       "
     restart: unless-stopped
+    networks:
+      - aeronet
 
   pushgateway:
     image: prom/pushgateway:latest
@@ -63,6 +61,20 @@ services:
     ports:
       - "9091:9091"
     restart: unless-stopped
+    networks:
+      - aeronet
+
+  queue:
+    build: ./queue
+    image: aerocast-queue:latest
+    container_name: aerocast-queue
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    # profiles: ["polyglot", "default"] # Uncomment if using profiles
+    networks:
+      - aeronet
+  # -----------------------------------------------------
 
   drift:
     build:
@@ -70,16 +82,17 @@ services:
       dockerfile: Dockerfile.worker
     image: aerocast-worker:latest
     container_name: aerocast-drift
-    # drift script uses localhost:9091 → share pushgateway's network
-    network_mode: "service:pushgateway"
     depends_on:
       - pushgateway
+      - queue  # This now points to the service above
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
       - aerocast-state:/app/state
     environment:
-      - PUSHGATEWAY_HOST=localhost:9091
+      - PUSHGATEWAY_HOST=pushgateway:9091
+      - QUEUE_ENABLED=1
+      - QUEUE_URL=http://queue:8081
     command: >
       sh -c "
         mkdir -p /app/state &&
@@ -89,6 +102,8 @@ services:
         while true; do python monitoring/drift_detector.py; sleep 5; done
       "
     restart: unless-stopped
+    networks:
+      - aeronet
 
   trainer:
     build:
@@ -96,10 +111,9 @@ services:
       dockerfile: Dockerfile.worker
     image: aerocast-worker:latest
     container_name: aerocast-trainer
-    # trainer pushes to localhost:9091 too
-    network_mode: "service:pushgateway"
     depends_on:
       - pushgateway
+      - queue  # This now points to the service above
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -107,10 +121,12 @@ services:
       - ./mlruns:/app/mlruns
       - aerocast-state:/app/state
     environment:
-      - PUSHGATEWAY_HOST=localhost:9091
+      - PUSHGATEWAY_HOST=pushgateway:9091
       - TRAIN_COOLDOWN=60
-      # same station id used for training data
       - AEROCAST_NOAA_STATION=CHANGE_ME_STATION_ID
+      - QUEUE_ENABLED=1
+      - QUEUE_URL=http://queue:8081
+    # NOTE: $$NOW is escaped for Docker Compose to pass it to the shell
     command: >
       sh -c "
         python data/generate_training_data.py || true;
@@ -119,17 +135,17 @@ services:
         ln -sf /app/state/retrain.flag /app/retrain.flag &&
         ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
         while true; do
-          NOW=$(date +%s);
+          NOW=$$(date +%s);
           LAST=0;
-          [ -f /app/state/last_train_ts ] && LAST=$(cat /app/state/last_train_ts || echo 0);
-          COOLDOWN=${TRAIN_COOLDOWN:-60};
-          if [ -f /app/retrain.flag ] && [ $((NOW - LAST)) -ge $COOLDOWN ]; then
-            python training/mlflow_gru_train.py && echo $NOW > /app/state/last_train_ts;
-          fi;
+          [ -f /app/state/last_train_ts ] && LAST=$$(cat /app/state/last_train_ts || echo 0);
+          COOLDOWN=$${TRAIN_COOLDOWN:-60};
+          python training/mlflow_gru_train.py && echo $$NOW > /app/state/last_train_ts;
           sleep 5;
         done
       "
     restart: unless-stopped
+    networks:
+      - aeronet
 
   prometheus:
     image: prom/prometheus:latest
@@ -142,6 +158,8 @@ services:
     depends_on:
       - api
       - pushgateway
+    networks:
+      - aeronet
 
   grafana:
     image: grafana/grafana:latest
@@ -158,6 +176,12 @@ services:
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     restart: unless-stopped
+    networks:
+      - aeronet
 
 volumes:
   aerocast-state:
+
+networks:
+  aeronet:
+    driver: bridge

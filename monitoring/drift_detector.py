@@ -4,6 +4,7 @@
 import os
 import datetime as dt
 import pandas as pd
+import requests  # NEW: For Go Queue
 from prometheus_client import (
     CollectorRegistry,
     Gauge,
@@ -25,6 +26,10 @@ WINDOW = 6
 TEMP_THRESHOLD = 38.0
 PUSHGATEWAY = os.environ.get("PUSHGATEWAY_HOST", "localhost:9091")
 
+# --- NEW: Queue Configuration ---
+QUEUE_ENABLED = os.environ.get("QUEUE_ENABLED", "0") == "1"
+QUEUE_URL = os.environ.get("QUEUE_URL", "http://queue:8081")
+
 # 1) gauges → overwrite OK
 gauge_reg = CollectorRegistry()
 DRIFT_FLAG = Gauge("aerocast_drift_flag", "Drift flag (0/1)", ["city"], registry=gauge_reg)
@@ -35,14 +40,13 @@ LAST_DRIFT_TS = Gauge(
     "Unix timestamp (UTC) of last COOL→HOT drift",
     registry=gauge_reg,
 )
-# NEW: this is the one Grafana will trust
 DRIFT_COUNT_G = Gauge(
     "aerocast_drift_count",
     "File-backed total drift events (authoritative)",
     registry=gauge_reg,
 )
 
-# 2) counter → we keep it, but we know pushadd isn't working on your box
+# 2) counter
 counter_reg = CollectorRegistry()
 DRIFT_TOTAL = Counter("aerocast_drift_total", "Total drift events", registry=counter_reg)
 
@@ -98,6 +102,29 @@ def _save_drift_count(n: int) -> None:
     with open(DRIFT_COUNT_FILE, "w") as f:
         f.write(str(n))
 
+def _trigger_retrain(reason: str):
+    """
+    Hybrid trigger: Writes file (legacy) AND posts to queue (cloud-native)
+    """
+    # 1. Legacy File Path (Fallback)
+    with open(FLAG_PATH, "w") as f:
+        f.write(reason)
+    print(f"[drift] wrote flag file: {reason}")
+
+    # 2. Go Queue Path (Primary)
+    if QUEUE_ENABLED:
+        try:
+            resp = requests.post(
+                f"{QUEUE_URL}/publish", 
+                json={"event": reason}, 
+                timeout=2
+            )
+            if resp.status_code == 202:
+                print(f"[drift] posted event to queue: {reason}")
+            else:
+                print(f"[drift] queue error: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"[drift] failed to connect to queue: {e}")
 
 def detect_and_flag() -> bool:
     if not os.path.exists(CSV_FILE):
@@ -116,11 +143,8 @@ def detect_and_flag() -> bool:
 
     is_hot = int(mean_actual >= TEMP_THRESHOLD)
     last_state = _read_state()
-
-    # read current drift count (for non-drift paths we still push it)
     current_count = _load_drift_count()
 
-    # always push gauges → so Grafana shows *something*
     try:
         DRIFT_FLAG.labels("saarbruecken").set(is_hot)
         if len(gru_err):
@@ -133,46 +157,42 @@ def detect_and_flag() -> bool:
     except Exception:
         pass
 
-    # 1) COOL → write cool and exit
+    # 1) COOL
     if not is_hot:
         _write_state("cool")
         print(f"[drift] no drift (mean={mean_actual:.2f} < {TEMP_THRESHOLD}) → state=cool")
         return False
 
-    # 2) still hot but trainer hasn’t consumed flag → do nothing
+    # 2) Hot but flag exists
     if os.path.exists(FLAG_PATH):
         _write_state("hot")
         print("[drift] hot but retrain.flag already exists → waiting for trainer")
         return False
 
-    # 3) still same hot episode → do nothing
+    # 3) Still same hot episode
     if last_state == "hot":
         _write_state("hot")
         print("[drift] still same hot episode → no new count")
         return False
 
-    # 4) REAL NEW DRIFT (COOL -> HOT)
+    # 4) REAL NEW DRIFT
     now = dt.datetime.utcnow()
     now_iso = now.isoformat()
     now_ts = now.timestamp()
 
-    # write a descriptive flag so trainer can say reason=drift
-    with open(FLAG_PATH, "w") as f:
-        f.write(f"drift {now_iso}")
+    # NEW: Use trigger helper
+    reason_msg = f"drift {now_iso}"
+    _trigger_retrain(reason_msg)
 
     _write_state("hot")
 
-    _log(
-        f"{now_iso}  DRIFT  mean_actual={mean_actual:.2f}°C  >= {TEMP_THRESHOLD}°C"
-    )
+    _log(f"{now_iso}  DRIFT  mean_actual={mean_actual:.2f}°C  >= {TEMP_THRESHOLD}°C")
     with open(LAST_DRIFT_FILE, "w") as f:
         f.write(now_iso + "\n")
 
-    # bump file-backed counter
     current_count += 1
     _save_drift_count(current_count)
 
-    # push updated gauges (this will overwrite, good)
     try:
         LAST_DRIFT_TS.set(now_ts)
         DRIFT_COUNT_G.set(current_count)
@@ -180,16 +200,13 @@ def detect_and_flag() -> bool:
     except Exception:
         pass
 
-    # keep your original counter (even if gateway doesn’t add)
     try:
         DRIFT_TOTAL.inc()
         pushadd_to_gateway(PUSHGATEWAY, job="aerocast_drift_counter", registry=counter_reg)
     except Exception:
         pass
 
-    print(
-        f"[drift] NEW drift → flag created | count={current_count} | last {WINDOW} = {list(actuals)} | mean={mean_actual:.2f} ≥ {TEMP_THRESHOLD}"
-    )
+    print(f"[drift] NEW drift → flag created | count={current_count} | mean={mean_actual:.2f}")
     return True
 
 

@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import requests  # NEW
 
 import mlflow
 from mlflow.models.signature import infer_signature
@@ -27,6 +28,10 @@ FLAG = os.path.join(ROOT, "retrain.flag")
 LAST_RETRAIN_FILE = os.path.join(ROOT, "last_retrain.txt")
 LOG_DIR = os.path.join(ROOT, "logs")
 RETRAIN_COUNT_FILE = os.path.join(LOG_DIR, "retrain_count.txt")
+
+# --- NEW: Queue Config ---
+QUEUE_ENABLED = os.environ.get("QUEUE_ENABLED", "0") == "1"
+QUEUE_URL = os.environ.get("QUEUE_URL", "http://queue:8081")
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -87,21 +92,54 @@ def _save_retrain_count(n: int) -> None:
 
 
 def get_reason_and_clear_flag() -> str:
-    if not os.path.exists(FLAG):
-        return "initial"
+    """
+    Checks both the local file and the Go Event Queue for a retrain signal.
+    """
+    reason = "unknown"
+    found = False
 
-    txt = open(FLAG, "r").read().strip()
-    os.remove(FLAG)
+    # 1. Legacy: Check File
+    if os.path.exists(FLAG):
+        txt = open(FLAG, "r").read().strip()
+        os.remove(FLAG)
+        if txt.startswith("drift"):
+            reason = "drift"
+        elif txt.startswith("schedule"):
+            reason = "schedule"
+        found = True
+        print(f"[trainer] found flag file: {reason}")
 
-    if txt.startswith("drift"):
-        return "drift"
-    if txt.startswith("schedule"):
-        return "schedule"
-    return "unknown"
+    # 2. Modern: Check Queue (if enabled)
+    # Note: we check queue even if found via file to 'drain' it, or prioritize file. 
+    # For simplicity, if file found, we skip queue to avoid double train immediately.
+    if QUEUE_ENABLED and not found:
+        try:
+            resp = requests.get(f"{QUEUE_URL}/subscribe", timeout=2)
+            if resp.status_code == 200:
+                data = resp.json()
+                event_msg = data.get("event", "")
+                if "drift" in event_msg:
+                    reason = "drift"
+                elif "schedule" in event_msg:
+                    reason = "schedule"
+                found = True
+                print(f"[trainer] received event from queue: {event_msg}")
+        except Exception as e:
+            # Log but don't crash, fallback to file next loop
+            print(f"[trainer] queue check failed: {e}")
+
+    if not found:
+        return "none" # Signal caller to skip
+
+    return reason
 
 
 def train():
     rsn = get_reason_and_clear_flag()
+    if rsn == "none":
+        # No work to do
+        return
+
     mlflow.set_experiment("AeroCast-GRU")
     mlflow.pytorch.autolog(log_models=False)
 

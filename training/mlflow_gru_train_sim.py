@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import requests  # NEW: For Queue polling
 
 import mlflow
 from mlflow.models.signature import infer_signature
@@ -17,6 +18,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CSV = os.path.join(ROOT, "data", "training_data_sim.csv")
 FLAG = os.path.join(ROOT, "retrain.flag")
 LAST_RETRAIN_FILE = os.path.join(ROOT, "last_retrain.txt")
+
+# --- NEW: Queue Configuration ---
+QUEUE_ENABLED = os.environ.get("QUEUE_ENABLED", "0") == "1"
+QUEUE_URL = os.environ.get("QUEUE_URL", "http://queue:8081")
 
 WINDOW = 24
 N_FEATS = 3              # match API + fake 3D
@@ -38,16 +43,54 @@ class SimTSDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 
-def _reason():
+def get_reason_and_clear_flag() -> str:
+    """
+    Checks both the local file and the Go Event Queue for a retrain signal.
+    """
+    reason = "unknown"
+    found = False
+
+    # 1. Legacy: Check File
     if os.path.exists(FLAG):
-        txt = open(FLAG, "r").read().strip() or "drift"
+        txt = open(FLAG, "r").read().strip()
         os.remove(FLAG)
-        return txt.split()[0]
-    return "initial"
+        # Simple parsing of "drift <timestamp>" or "schedule <timestamp>"
+        if txt.startswith("drift"):
+            reason = "drift"
+        elif txt.startswith("schedule"):
+            reason = "schedule"
+        found = True
+        print(f"[train-sim] found flag file: {reason}")
+
+    # 2. Modern: Check Queue (if enabled)
+    if QUEUE_ENABLED and not found:
+        try:
+            # Poll the Go service
+            resp = requests.get(f"{QUEUE_URL}/subscribe", timeout=2)
+            if resp.status_code == 200:
+                data = resp.json()
+                event_msg = data.get("event", "")
+                if "drift" in event_msg:
+                    reason = "drift"
+                elif "schedule" in event_msg:
+                    reason = "schedule"
+                found = True
+                print(f"[train-sim] received event from queue: {event_msg}")
+        except Exception as e:
+            print(f"[train-sim] queue check failed: {e}")
+
+    if not found:
+        return "none"  # Signal caller to skip
+
+    return reason
 
 
 def train():
-    reason = _reason()
+    # Check for trigger
+    reason = get_reason_and_clear_flag()
+    if reason == "none":
+        # No work to do
+        return
 
     mlflow.set_experiment("AeroCast-GRU-SIM")
     mlflow.pytorch.autolog(log_models=False)
@@ -59,6 +102,8 @@ def train():
     opt = torch.optim.Adam(model.parameters(), lr=0.01)
     lossf = nn.MSELoss()
 
+    print(f"[train-sim] starting run. reason={reason}")
+    
     with mlflow.start_run() as run:
         mlflow.set_tag("run_reason", reason)
         mlflow.log_param("window", WINDOW)
