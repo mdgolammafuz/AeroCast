@@ -2,18 +2,18 @@
 AeroCast is a real-time forecasting pipeline: streaming data in, landing it to storage, training a model, monitoring it for drift, and triggering retrains — with Prometheus/Grafana watching the whole loop. It includes the NOAA path (realistic, stable), the simulated path (drift-on-purpose), monitoring, and the self-heal loop.
 
 --
-- streaming-style ingestion (realistic and simulated),
-- FastAPI serving surface,
-- drift detection that raises a `retrain.flag`,
-- trainers that log to MLflow and refresh artifacts,
-- Prometheus + Pushgateway + Grafana,
-- Helm chart for Kubernetes,
-- Terraform wrapper to apply the chart,
-- CI that tests and publishes GHCR images.
-
+Core capabilities:
+- Streaming-style ingestion (realistic and simulated)
+- FastAPI serving surface
+- Drift detection that triggers retraining events
+- Event-driven orchestration via Go microservice (replacing file-based flags)
+- Trainers that log to MLflow and refresh artifacts
+- Prometheus + Pushgateway + Grafana for observability
+- Helm chart for Kubernetes
+- Terraform wrapper to apply the chart
 ---
 
-## 1. Repository layout (curated)
+## Repository layout (curated)
 
 ```text
 .
@@ -31,110 +31,134 @@ AeroCast is a real-time forecasting pipeline: streaming data in, landing it to s
 ├── helm/aerocast            # Helm chart
 ├── infra/main.tf            # Terraform → install chart
 ├── tests/                   # API + state file tests
+├── queue/                   # Go Event Queue Microservice 
 └── docs/                    # deeper design notes
 ```
-
-This is the surface that matters. Local state (`logs/`, `mlruns/`, `.terraform/`, `venv/`) is intentionally not front-and-center.
-
 ---
 
-## 2. Verification flow for reviewers
+## Verification flow for Reviewers
 
 This is the fastest path to check out that AeroCast is alive.
 
-1. **Docker local run**
-   ```bash
-   docker compose up
-   curl http://localhost:8000/healthz
-   ```
-   Expected: JSON like `{ "ok": true, ... }`.
+1. **Build and Start (Local Docker)**
 
-2. **Metrics alive**
-   ```bash
-   curl http://localhost:8000/metrics
-   ```
-   Expected: `aerocast_*` Prometheus metrics.
+Use the polyglot profile to enable the Go Queue and all workers.
 
-3. **Trainer activity**
-   ```bash
-   docker logs -f aerocast-trainer
-   ```
-   Expected: a training run finishing with a reason (drift / schedule).
+```bash
+docker compose build --no-cache
+docker compose --profile polyglot up -d
+```
+2. **Verify API Health**
 
-4. **Kubernetes install**
-   ```bash
-   helm upgrade --install aerocast ./helm/aerocast -n aerocast --create-namespace
-   kubectl get pods -n aerocast
-   ```
-   Expected: API, Prometheus, Grafana pods in `Running` state.
+```bash
+curl http://localhost:8000/healthz
+```
+Expected: {"ok": true, ...}
 
-5. **Port-forward checks**
-   ```bash
-   kubectl port-forward -n aerocast svc/aerocast-api 8000:8000
-   kubectl port-forward -n aerocast svc/aerocast-grafana 3000:3000
-   kubectl port-forward -n aerocast svc/aerocast-prometheus 9090:9090
-   ```
-   Then hit `http://localhost:8000/healthz`, open Grafana, open Prometheus.
+3. **Check Feeder Logs**
 
-6. **Prometheus sees Pushgateway**
-   - Open Prometheus → Targets → `pushgateway` should be UP.
+Ensure the feeder is successfully hitting the API.
 
-This is the minimal, observable checklist.
+```bash
+docker logs aerocast-feeder
+```
+Expected: [Feeder] Actual=... | Pred=...
+
+4. **Verify Queue Health**
+
+```bash
+curl http://localhost:8081/metrics
+```
+Expected: Prometheus metrics (aerocast_queue_depth, etc.)
+
+5. **Trainer activity**
+
+```bash
+docker logs -f aerocast-trainer
+```
+Expected: a training run finishing with a reason (drift / schedule).
+
+6. **Kubernetes install**
+
+```bash
+helm upgrade --install aerocast ./helm/aerocast -n aerocast --create-namespace
+kubectl get pods -n aerocast
+```
+Expected: API, Prometheus, Grafana pods in `Running` state.
+
+7. **Port-forward checks**
+
+```bash
+kubectl port-forward -n aerocast svc/aerocast-api 8000:8000
+kubectl port-forward -n aerocast svc/aerocast-grafana 3000:3000
+kubectl port-forward -n aerocast svc/aerocast-prometheus 9090:9090
+```
+Then hit `http://localhost:8000/healthz`, open Grafana, open Prometheus.
+
+8. **Prometheus sees Pushgateway**
+
+Open Prometheus → Targets → `pushgateway` should be UP.
 
 ---
 
-## 3. High-level architecture
+## High-level architecture
 
 ```mermaid
 flowchart TD
     subgraph Sources
         A[NOAA stream]
-        B[Simulated drift stream]
+        B[Simulated heatwave]
     end
 
     subgraph Storage
         C[data/processed parquet]
+        M[MLflow Artifacts]
     end
 
     subgraph Processing
-        P1[Spark style processing bronze to silver]
+        P1[Spark-style processing bronze to silver]
     end
 
     subgraph Training
-        T1[data/generate_training_data.py]
-        T2[data/generate_training_data_sim.py]
-        T3[training/mlflow_gru_train.py]
-        T4[training/train_prophet.py]
+        T1[generate_training_data.py]
+        T2[mlflow_gru_train.py]
     end
 
     subgraph Serving
-        S[FastAPI: predict eval routine-retrain-check metrics]
+        S[FastAPI: predict eval]
+    end
+
+    subgraph "Infrastructure (Docker Network)"
+        Q[Go Event Queue :8081]
     end
 
     subgraph Monitoring
-        M1[monitoring/drift_detector.py]
-        M2[Pushgateway]
-        M3[Prometheus]
-        M4[Grafana]
+        D[Drift Detector]
+        PG[Pushgateway]
+        Prom[Prometheus]
+        G[Grafana]
     end
 
     A --> C
     B --> C
     C --> P1 --> T1
-    C --> T2
-    T1 --> T3 --> S
-    T2 --> T3
-    T4 --> S
-    S --> M1
-    M1 -->|write retrain.flag| T3
-    S -->|export metrics| M3
-    M1 --> M2 --> M3 --> M4
+    T1 --> T2
+    T2 -->|Save Model| M
+    M -->|Load Model| S
+    
+    S -->|Prediction History| D
+    D -->|1. Detect Drift| Q
+    Q -->|2. Publish Event| T2
+    T2 -->|3. Retrain| M
+    
+    S --> PG
+    D --> PG
+    PG --> Prom --> G
 ```
-Two data shapes, one serving plane, with monitoring and retrain in the loop.
 
 ---
 
-## 4. Business Impact (Projected)
+## Business Impact (Projected)
 
 ### Problem
 
@@ -192,7 +216,7 @@ That’s not a production cost model, but it shows the **direction**: one small 
 
 ---
 
-## 5. Performance & Benchmarks
+## Performance & Benchmarks
 
 ### Forecast Accuracy – NOAA (Chicago O’Hare, 2024)
 Data:
@@ -264,9 +288,9 @@ raise alerts unnecessarily during the calm period.
 
 ---
 
-## 6. Two pipelines
+## Two pipelines
 
-### 6.1 NOAA-like (stable)
+### 1. NOAA-like (stable)
 - Schema:
   - `ts: timestamp`
   - `temperature: float`
@@ -277,7 +301,7 @@ raise alerts unnecessarily during the calm period.
 - Trainer: `training/mlflow_gru_train.py`
 - Even though the data is stable, the API still exposes `/routine-retrain-check` so the loop can stay active.
 
-### 6.2 Simulator (drift-on-purpose)
+### 2. Simulator (drift-on-purpose)
 - Schema:
   - `ts: timestamp`
   - `temperature: float`
@@ -297,78 +321,150 @@ raise alerts unnecessarily during the calm period.
 
 ---
 
-## 7. Runbook (demo)
+## The Self-Healing Demo (Full Experiment Runbook)
 
-This is the end-to-end demo path.
+This sequence reproduces the "Drift → Queue → Retrain" loop. Follow these steps exactly to verify the system's autonomous recovery capabilities.
+
+### Phase 1: Clean Slate & Bootstrap
+
+Generate baseline data and train the initial model locally so the system starts in a healthy state.
+
+**1. Stop and Clean**
 
 ```bash
-# 0) clean
-rm -f retrain.flag last_retrain.txt
+docker compose down
+docker rm -f $(docker ps -aq) 2>/dev/null
+
+# Remove state files and old data
+rm -f logs/prediction_history.csv logs/drift.log logs/drift_count.txt logs/last_drift_state.txt logs/last_drift.txt
 rm -f data/processed/part-*.parquet
-rm -f logs/prediction_history.csv logs/last_drift_state.txt logs/last_drift.txt logs/drift_count.txt
-
-# 1) collect calm data for both Prophet & GRU
-CALM_ONLY=1 python streaming/ingestion/heatwave_simulator.py
-# ... let it run 60–90s, then Ctrl+C
-
-# 2) build CSV from calm
-python data/generate_training_data_sim.py
-
-# 3) train Prophet baseline
-python training/train_prophet.py
-
-# 4) train GRU on same calm window
-cp data/training_data_sim.csv data/training_data.csv
-python training/mlflow_gru_train.py
-
-# 5) start simulated feeder (this hits /predict and /eval and writes logs/prediction_history.csv)
-python streaming/client/live_predictor_feeder_sim.py
-
-# 6) now start HEATWAVE version (no CALM_ONLY)
-python streaming/ingestion/heatwave_simulator.py
-
-# 7) run drift detector to turn heat into retrain.flag
-python monitoring/drift_detector.py
-
-# 8) consume the flag → retrain
-python training/mlflow_gru_train.py
+rm -f data/training_data_sim.csv
 ```
 
-This path shows the “state-aware” nature: ingestion → model use → error observed → drift detected → flag created → trainer consumes flag → artifacts updated.
+**2. Generate Calm Data**  
+Run the simulator in calm mode for 60 seconds to create a baseline.
+
+```bash
+CALM_ONLY=1 python streaming/ingestion/heatwave_simulator.py
+# Wait until ~12-15 files are generated, then Press Ctrl+C
+```
+
+**3. Train Initial Model**  
+Prepare the CSV and train the model so the API has an artifact to load on startup.
+
+```bash
+python data/generate_training_data_sim.py
+python training/mlflow_gru_train_sim.py --setup
+```
+
+### Phase 2: Launch System
+
+Start the full stack. The `feeder` service will automatically start predicting using the initial model.
+
+```bash
+docker compose --profile polyglot up -d
+```
+
+### Phase 3: Trigger Drift (The Heatwave)
+
+Inject a "Heatwave" anomaly to force the system to react.
+
+```bash
+python streaming/ingestion/heatwave_simulator.py
+# Let this run. Temperature values will spike >35.0.
+```
+
+### Phase 4: Observe Self-Healing
+
+Watch the logs to see the architecture in action.
+
+**1. Drift Detected**
+
+```bash
+docker logs -f aerocast-drift
+```
+
+Output:  
+`[drift] DRIFT DETECTED! Event posted to queue`
+
+**2. Retraining Triggered**
+
+```bash
+docker logs -f aerocast-trainer
+```
+
+Output:  
+`[train-sim] Received event from queue: drift` → `Regenerating CSV` → `Training complete`
+
+**3. Queue Metrics Verification**
+
+```bash
+curl -s http://localhost:8081/metrics | grep aerocast_queue_published_total
+```
+
+Output should be: `> 0`
+
+-----
+
+## Known Limitations (V1)
+
+**1. Model Scaling**  
+The current GRU model is trained on raw, unscaled temperature data. As a result, predictions may be dampened (values < 1.0) or slow to converge during the short training demo.
+
+- **Impact:** The *magnitude* of the forecast is inaccurate, but the *direction* and error patterns (drift) are preserved.  
+- **Mitigation:** The drift detector triggers based on the **actual** value stream (which correctly spikes during the heatwave), so the self-healing loop functions correctly despite the model's scaling issue.  
+- **Roadmap:** Implement a Scikit-Learn `StandardScaler` pipeline to normalize inputs/outputs.
+
+**2. NOAA Pipeline Status**  
+The "Self-Healing" architecture (Go Queue + Daemons) is fully implemented for the **Simulation** pipeline to facilitate rapid demonstration.
+
+- **NOAA Pipeline:** Currently runs as a legacy file-based script.  
+- **Roadmap:** Port the NOAA `live_predictor_feeder.py` and `mlflow_gru_train.py` to use the new buffer logic and queue polling system established in the Simulation.
 
 ---
 
-## 8. Self-healing loop
+## Self-healing loop
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Feeder
     participant API as FastAPI
-    participant Drift as drift_detector.py
-    participant Trainer as mlflow_gru_train.py
-    participant Store as artifacts/
+    participant Disk as Shared Logs
+    participant Drift as Drift Detector
+    participant Queue as Go Event Queue
+    participant Trainer as Model Trainer
+    participant Store as Artifacts
 
+    Note over Feeder, API: 1. Simulation Loop
     Feeder->>API: POST /predict {sequence}
-    API-->>Feeder: forecast
-    Feeder->>API: POST /eval {predicted, actual}
-    API-->>Feeder: {rmse, drift_flagged}
-    Drift->>logs/prediction_history.csv: scan recent errors
-    alt error pattern changed
-        Drift->>Trainer: create retrain.flag
-        Trainer->>Trainer: read flag + reason
-        Trainer->>Store: save .pt / model files
-        Trainer->>MLflow: log run
-        Trainer->>API: next reload picks up new artifact
+    API-->>Feeder: Returns forecast
+    Feeder->>Feeder: Calculate Error (Actual vs Pred)
+    Feeder->>Disk: Write to prediction_history.csv
+
+    Note over Drift, Queue: 2. Detection Loop (Every 5s)
+    Drift->>Disk: Read recent history
+    alt Mean Error > Threshold (Heatwave)
+        Drift->>Queue: POST /publish {"event": "drift"}
+        Queue-->>Drift: 202 Accepted
+    end
+
+    Note over Trainer, Store: 3. Healing Loop (Daemon)
+    loop Poll Queue
+        Trainer->>Queue: GET /subscribe
+        alt Event Received
+            Queue-->>Trainer: 200 OK {"event": "drift"}
+            Trainer->>Trainer: Regenerate Training Data
+            Trainer->>Trainer: Train New GRU Model
+            Trainer->>Store: Overwrite .pt artifact
+            Note right of API: API loads new model on next request
+        end
     end
 ```
 
-- the detector increments only on change to keep noise low,
-- the trainer clears the flag to keep the channel single-shot,
-- metrics are pushed so Prometheus/Grafana can show when retrain happened.
-
 ---
 
-## 9. Serving (FastAPI)
+## Serving (FastAPI)
 
 Entrypoint:
 
@@ -387,7 +483,7 @@ Tested in CI with `pytest` and `httpx` (Starlette TestClient requires `httpx`).
 
 ---
 
-## 10. Streaming / Kafka / Spark
+## Streaming / Kafka / Spark
 
 - `streaming/ingestion/` and `streaming/processing/` mimic a Kafka/Spark ingestion path landing parquet under `data/processed/`.
 - Folder structure under `data/` shows bronze/silver style layers, which is common in Spark or Delta pipelines.
@@ -398,9 +494,9 @@ Tested in CI with `pytest` and `httpx` (Starlette TestClient requires `httpx`).
 
 ---
 
-## 11. Data prep (schemas)
+## Data prep (schemas)
 
-### 11.1 NOAA → CSV
+### 1. NOAA → CSV
 Source: `data/processed/noaa/*.parquet`  
 Expected columns: `ts, temperature, windspeed, pressure`  
 Windowed (e.g. 5 steps):
@@ -416,7 +512,7 @@ target
 
 This is exactly what `training/mlflow_gru_train.py` consumes.
 
-### 11.2 Simulator → CSV
+### 2. Simulator → CSV
 Source: `data/processed/part-*.parquet`  
 Expected columns: `ts, temperature`  
 Windowed (5 steps):
@@ -430,29 +526,35 @@ After that, either copy to the main CSV or call the sim trainer.
 
 ---
 
-## 12. Deployment options
+## Deployment options
 
-### 12.1 Local (compose)
+### 1. Local (compose)
+
 - start everything:
+
   ```bash
-  docker compose up
+  docker compose build
+  docker compose --profile polyglot up -d
   ```
 - verify:
+
   ```bash
-  curl http://localhost:8000/healthz
-  curl http://localhost:8000/metrics
+  curl http://localhost:8000/healthz   
+  curl http://localhost:8081/metrics
   ```
 
-### 12.2 Kubernetes (Helm)
+### 2. Kubernetes (Helm)
+
 - chart is in `helm/aerocast`
 - install / upgrade:
+
   ```bash
   helm upgrade --install aerocast ./helm/aerocast     --namespace aerocast --create-namespace
   kubectl get pods -n aerocast
   ```
 - port-forward to test API, Grafana, Prometheus.
 
-### 12.3 Terraform (IaC wrapper)
+### 3. Terraform (IaC wrapper)
 - file: `infra/main.tf`
 - providers: `kubernetes` and `helm`
 - applies the local chart from `../helm/aerocast` into the `aerocast` namespace
@@ -466,7 +568,7 @@ After that, either copy to the main CSV or call the sim trainer.
 
 ---
 
-## 13. CI
+## CI
 
 Single workflow to keep things predictable: `.github/workflows/ci.yml`
 
@@ -484,22 +586,7 @@ Extra docker-only workflows were removed to avoid parallel duplicate runs.
 
 ---
 
-A flat forecast band was observed during development. Probable causes:
-
-1. training performed on a very short calm window → model learned a constant;
-2. 1D simulated CSV was passed to the 3D trainer without aligning feature count;
-3. old artifact files were still present and kept being loaded.
-
-Current layout makes the flow explicit:
-
-- simulator builds `data/training_data_sim.csv`,
-- that file can be copied over `data/training_data.csv`,
-- `training/mlflow_gru_train.py` can then be run,
-- FastAPI will serve the refreshed artifact.
-
----
-
-## 14. Security / production notes
+## Security / production notes
 
 - no secrets committed,
 - `retrain.flag` is a local-file contract; a production system would move this to a message bus or DB,
@@ -509,7 +596,7 @@ Current layout makes the flow explicit:
 
 ---
 
-## 15. GDPR / Data Protection Notes
+## GDPR / Data Protection Notes
 
 > For EU / German deployments, see also **Section 16** on data residency and auditability.  
 > This section focuses specifically on what happens the moment personal data enters the pipeline.
@@ -577,7 +664,7 @@ This repository is built and tested against synthetic and public-weather–style
 
 ---
 
-## 16. EU / German Deployment Notes
+## EU / German Deployment Notes
 
 This repo runs locally by default and uses either synthetic time series or public NOAA-style weather data. There is no personal data in the demo setup.
 
@@ -607,7 +694,7 @@ For a real deployment in a German / EU context, the main points are:
 
 ---
 
-## 17. License
+## License
 
 This project is licensed under the **MIT License**.
 
