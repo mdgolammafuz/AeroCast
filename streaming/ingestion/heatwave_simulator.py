@@ -1,5 +1,5 @@
 """
-Simulated weather stream.
+Simulated weather stream with Atomic Writes to prevent read errors.
 
 Normal mode (default):
 - first RAMP_AFTER rows = calm (20–30 °C)
@@ -21,17 +21,15 @@ from datetime import datetime
 DATA_DIR = "data/processed"
 CADENCE_SEC = 5
 
-# calm phase
-RAMP_AFTER = 20  # ~100 seconds @ 5s cadence
+# Calm phase length (36 steps ensures Feeder buffer of 24 + 12 visible steps)
+RAMP_AFTER = 36
 
-# heatwave shape (but we will cap)
+# Heatwave shape
 BUMP = 12.0
 RAMP_STEP = 0.6
 NOISE_STD = 0.6
 SPIKE_EVERY = 7
 SPIKE_TEMP = (46.0, 52.0)
-
-# hard safety cap so we don't see 200°C
 MAX_TEMP = 55.0
 
 SEED = 42
@@ -46,27 +44,19 @@ def _calm_temp() -> float:
 
 
 def _heatwave_temp(k_since_shift: int) -> float:
-    # baseline ramp
     base = 25.0 + BUMP + k_since_shift * RAMP_STEP
     noise = random.gauss(0.0, NOISE_STD)
     val = base + noise
-
-    # every Nth reading, make it look dramatic
     if k_since_shift > 0 and (k_since_shift % SPIKE_EVERY == 0):
         val = random.uniform(*SPIKE_TEMP)
-
-    # hard cap
     if val > MAX_TEMP:
         val = MAX_TEMP
-
     return round(val, 2)
 
 
 def main():
-    if CALM_ONLY:
-        print("Streaming CALM ONLY … use this to pretrain Prophet/GRU. CTRL-C to stop.")
-    else:
-        print("Streaming calm → capped heatwave … CTRL-C to stop.")
+    mode = "CALM ONLY" if CALM_ONLY else "36 Calm -> Heatwave"
+    print(f"Streaming: {mode}. CTRL-C to stop.")
 
     count = 0
     while True:
@@ -84,9 +74,23 @@ def main():
                 temp = _heatwave_temp(count - RAMP_AFTER)
 
         rec = {"ts": datetime.utcnow().isoformat(), "temperature": temp}
+        
+        # --- ATOMIC WRITE PATTERN ---
+        # 1. Define filename
         fname = f"{DATA_DIR}/part-{time.time()}.parquet"
-        pd.DataFrame([rec]).to_parquet(fname, index=False)
-        print(f"[{phase}] {rec['ts']}  temp={temp}°C  -> {fname}")
+        # 2. Write to a temporary hidden file first
+        temp_fname = f"{fname}.tmp"
+        
+        try:
+            pd.DataFrame([rec]).to_parquet(temp_fname, index=False)
+            # 3. Rename is atomic: The Feeder will never see a partial file
+            os.rename(temp_fname, fname)
+            print(f"[{phase}] {rec['ts']}  temp={temp}°C  -> {fname}")
+        except Exception as e:
+            print(f"Error writing parquet: {e}")
+            # Cleanup temp file on failure
+            if os.path.exists(temp_fname):
+                os.remove(temp_fname)
 
         time.sleep(CADENCE_SEC)
 

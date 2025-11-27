@@ -39,6 +39,8 @@ services:
       - ./logs:/app/logs
       - ./artifacts:/app/artifacts
       - aerocast-state:/app/state
+    environment:
+      - API_URL=http://api:8000
     command: >
       sh -c "
         mkdir -p /app/state &&
@@ -71,10 +73,9 @@ services:
     ports:
       - "8081:8081"
     restart: unless-stopped
-    # profiles: ["polyglot", "default"] # Uncomment if using profiles
+    profiles: ["polyglot", "default"]
     networks:
       - aeronet
-  # -----------------------------------------------------
 
   drift:
     build:
@@ -84,7 +85,7 @@ services:
     container_name: aerocast-drift
     depends_on:
       - pushgateway
-      - queue  # This now points to the service above
+      # Removed queue dependency to prevent build error
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
@@ -113,7 +114,7 @@ services:
     container_name: aerocast-trainer
     depends_on:
       - pushgateway
-      - queue  # This now points to the service above
+      # Removed queue dependency to prevent build error
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -126,23 +127,8 @@ services:
       - AEROCAST_NOAA_STATION=CHANGE_ME_STATION_ID
       - QUEUE_ENABLED=1
       - QUEUE_URL=http://queue:8081
-    # NOTE: $$NOW is escaped for Docker Compose to pass it to the shell
-    command: >
-      sh -c "
-        python data/generate_training_data.py || true;
-        mkdir -p /app/state &&
-        touch /app/state/last_retrain.txt &&
-        ln -sf /app/state/retrain.flag /app/retrain.flag &&
-        ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
-        while true; do
-          NOW=$$(date +%s);
-          LAST=0;
-          [ -f /app/state/last_train_ts ] && LAST=$$(cat /app/state/last_train_ts || echo 0);
-          COOLDOWN=$${TRAIN_COOLDOWN:-60};
-          python training/mlflow_gru_train.py && echo $$NOW > /app/state/last_train_ts;
-          sleep 5;
-        done
-      "
+    # Uses the SIM trainer daemon
+    command: python training/mlflow_gru_train_sim.py
     restart: unless-stopped
     networks:
       - aeronet

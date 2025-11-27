@@ -1,124 +1,110 @@
 import os
-import sys
-import glob
 import time
-from datetime import datetime
-
-import pandas as pd
 import requests
+import pandas as pd
+from collections import deque
 
-# project root
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.insert(0, ROOT)
+# --- CONFIG ---
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
+PREDICT_ENDPOINT = f"{API_URL}/predict"
 
-API_URL = "http://localhost:8000/predict"
+# Paths adjusted relative to this script
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/processed"))
+LOG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../logs"))
+HISTORY_FILE = os.path.join(LOG_DIR, "prediction_history.csv")
 
-PARQUET_DIR = os.path.join(ROOT, "data", "processed")  # simulator writes here
-LOG_DIR = os.path.join(ROOT, "logs")
-LOG_FILE = os.path.join(LOG_DIR, "prediction_history.csv")
 os.makedirs(LOG_DIR, exist_ok=True)
+WINDOW_SIZE = 24
 
-WINDOW = 24  # same as model/API
-
-try:
-    from utils.prophet_helper import load_prophet_model, forecast_next
-    _PROPhet = load_prophet_model(os.path.join(ROOT, "artifacts", "prophet_model.json"))
-    HAS_PROPHET = True
-    print("[Feeder-SIM] Prophet loaded.")
-except Exception as e:
-    HAS_PROPHET = False
-    print(f"[Feeder-SIM] Prophet NOT loaded: {e}")
-
-
-def ensure_header():
-    if not os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "w") as f:
-            f.write("timestamp,sequence,forecast,actual,error,model\n")
-
-
-def _latest_parquet_files(n=50):
-    files = glob.glob(os.path.join(PARQUET_DIR, "part-*.parquet"))
-    files = [f for f in files if os.path.getsize(f) > 0]
-    files.sort(key=os.path.getmtime)
-    return files[-n:]
-
-
-def load_last_n_rows(n=50) -> pd.DataFrame:
-    files = _latest_parquet_files(n)
-    if not files:
-        raise FileNotFoundError("no simulator parquet files yet in data/processed/")
-    dfs = []
-    for f in files:
-        try:
-            dfs.append(pd.read_parquet(f))
-        except Exception:
-            continue
-    if not dfs:
-        raise FileNotFoundError("no readable simulator parquet files")
-    df = pd.concat(dfs, ignore_index=True)
-    df["ts"] = pd.to_datetime(df["ts"])
-    df = df.sort_values("ts").reset_index(drop=True)
-    return df[["ts", "temperature"]]
-
-
-def append_row(ts, seq, forecast, actual, error, model):
-    with open(LOG_FILE, "a") as f:
-        f.write(f"{ts},\"{seq}\",{forecast},{actual},{error},{model}\n")
-
+def get_latest_parquet():
+    try:
+        if not os.path.exists(DATA_DIR): return None
+        files = [f for f in os.listdir(DATA_DIR) if f.endswith(".parquet") and f.startswith("part-")]
+        if not files: return None
+        # Sort by modification time (newest first)
+        files.sort(key=lambda x: os.path.getmtime(os.path.join(DATA_DIR, x)), reverse=True)
+        return os.path.join(DATA_DIR, files[0])
+    except Exception:
+        return None
 
 def main():
-    ensure_header()
-    print("[Feeder-SIM] running on simulated heatwave… CTRL-C to stop")
+    print(f"[Feeder-SIM] Targeting API at: {API_URL}")
+    print(f"[Feeder-SIM] Buffering {WINDOW_SIZE} steps before first prediction...")
+    
+    if not os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "w") as f:
+            f.write("ts,model,prediction,actual,error\n")
+
+    seen_ts = set()
+    buffer = deque(maxlen=WINDOW_SIZE)
 
     while True:
-        try:
-            df_latest = load_last_n_rows(200)
-        except FileNotFoundError:
-            print("[Feeder-SIM] waiting for simulator parquet…")
-            time.sleep(3)
+        fpath = get_latest_parquet()
+        if not fpath:
+            time.sleep(1)
             continue
 
-        if len(df_latest) < WINDOW:
-            print(f"[Feeder-SIM] only {len(df_latest)} rows, need {WINDOW}…")
-            time.sleep(3)
-            continue
-
-        window_df = df_latest.iloc[-WINDOW:]
-        actual = float(window_df.iloc[-1]["temperature"])
-
-        seq = []
-        for _, r in window_df.iterrows():
-            temp = float(r["temperature"])
-            seq.append([
-                temp,      # temperature
-                5.0,       # fake windspeed
-                101000.0,  # fake pressure
-            ])
-
         try:
-            resp = requests.post(API_URL, json={"sequence": seq}, timeout=5)
-            resp.raise_for_status()
-            gru_fc = float(resp.json()["forecast"])
+            df = pd.read_parquet(fpath)
         except Exception as e:
-            print(f"[Feeder-SIM] predict failed: {e}")
-            time.sleep(3)
+            print(f"[Feeder-SIM] Read error: {e}")
+            time.sleep(1)
             continue
+        
+        df = df.sort_values("ts")
+        
+        for _, row in df.iterrows():
+            ts = str(row["ts"])
+            if ts in seen_ts:
+                continue
+            
+            seen_ts.add(ts)
+            
+            # 1. Update Buffer (Fake 3D feature: [temp, 0, 0])
+            temp = float(row["temperature"])
+            buffer.append([temp, 0.0, 0.0])
 
-        ts = datetime.utcnow().isoformat()
-        gru_err = abs(gru_fc - actual)
-        append_row(ts, seq, gru_fc, actual, gru_err, "GRU")
-        print(f"[Feeder-SIM] {ts} GRU={gru_fc:.2f} actual={actual:.2f} err={gru_err:.2f}")
+            # 2. Wait for buffer to fill
+            if len(buffer) < WINDOW_SIZE:
+                if len(buffer) % 5 == 0:
+                    print(f"[Feeder-SIM] Buffering... ({len(buffer)}/{WINDOW_SIZE})")
+                continue
 
-        if HAS_PROPHET:
+            # 3. Predict
             try:
-                prophet_fc = forecast_next(df_latest, _PROPhet, freq="5s")
-                prophet_err = abs(prophet_fc - actual)
-                append_row(ts, "[prophet]", prophet_fc, actual, prophet_err, "Prophet")
+                # Send list of lists
+                payload = {"sequence": list(buffer)}
+                resp = requests.post(PREDICT_ENDPOINT, json=payload, timeout=2)
+                
+                if resp.status_code != 200:
+                    print(f"[Feeder-SIM] API Error {resp.status_code}: {resp.text}")
+                    continue
+                
+                data = resp.json()
+                
+                # Robust parsing: Handle list vs float response
+                forecast = data.get("forecast")
+                if isinstance(forecast, list):
+                    pred_val = float(forecast[0])
+                else:
+                    pred_val = float(forecast)
+                    
+                model_name = data.get("model_name", "unknown")
+                
             except Exception as e:
-                print(f"[Feeder-SIM] prophet forecast failed: {e}")
+                print(f"[Feeder-SIM] Request failed: {e}")
+                continue
 
-        time.sleep(5)
-
+            # 4. Log Result
+            error = abs(pred_val - temp)
+            
+            with open(HISTORY_FILE, "a") as f:
+                f.write(f"{ts},{model_name},{pred_val:.2f},{temp:.2f},{error:.4f}\n")
+            
+            print(f"[Feeder] Actual={temp:.1f} | Pred={pred_val:.1f} | Err={error:.2f}")
+            
+            # Throttle to match simulator cadence
+            time.sleep(0.5)
 
 if __name__ == "__main__":
     main()

@@ -1,223 +1,111 @@
-import os, sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-import time
-import datetime
+import os, sys, time
+import requests
 import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import requests  # NEW
-
 import mlflow
 from mlflow.models.signature import infer_signature
+from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
 
+# Import Model
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from model.gru_model import GRUWeatherForecaster
-from prometheus_client import (
-    CollectorRegistry,
-    Gauge,
-    push_to_gateway,
-    Counter,
-    Summary,
-)
 
-PUSHGATEWAY_HOST = os.environ.get("PUSHGATEWAY_HOST", "localhost:9091")
+# Config
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CSV = os.path.join(ROOT, "data", "training_data.csv")
-FLAG = os.path.join(ROOT, "retrain.flag")
-LAST_RETRAIN_FILE = os.path.join(ROOT, "last_retrain.txt")
-LOG_DIR = os.path.join(ROOT, "logs")
-RETRAIN_COUNT_FILE = os.path.join(LOG_DIR, "retrain_count.txt")
-
-# --- NEW: Queue Config ---
-QUEUE_ENABLED = os.environ.get("QUEUE_ENABLED", "0") == "1"
 QUEUE_URL = os.environ.get("QUEUE_URL", "http://queue:8081")
+PUSHGATEWAY = os.environ.get("PUSHGATEWAY_HOST", "localhost:9091")
 
-os.makedirs(LOG_DIR, exist_ok=True)
-
+# Metrics
 registry = CollectorRegistry()
+RETRAIN_COUNT = Gauge("aerocast_retrain_count", "Total retrains", registry=registry)
 
-LOSS_GAUGE = Gauge("training_loss", "GRU loss", ["epoch", "reason"], registry=registry)
-RETRAIN_TOTAL = Counter(
-    "aerocast_retrain_total", "Total AeroCast GRU retrains (raw counter)", registry=registry
-)
-RETRAIN_DUR_S = Summary(
-    "aerocast_retrain_duration_seconds",
-    "Duration of GRU retrain runs (s)",
-    registry=registry,
-)
-RETRAIN_COUNT_G = Gauge(
-    "aerocast_retrain_count",
-    "File-backed total retrains (authoritative for dashboard)",
-    registry=registry,
-)
-LAST_RETRAIN_TS = Gauge(
-    "aerocast_last_retrain_ts",
-    "Unix timestamp (UTC) of last GRU retrain run",
-    registry=registry,
-)
-
+MODEL_NAME = "AeroCast-GRU-Model"
 WINDOW = 24
 N_FEATS = 3
-MODEL_NAME = "AeroCast-GRU-Model"
-
 
 class TSDataset(Dataset):
-    def __init__(self, path: str):
+    def __init__(self, path):
         df = pd.read_csv(path).astype("float32")
-        X_raw = df.iloc[:, :-1].values
-        N = X_raw.shape[0]
-        self.X = torch.tensor(X_raw).reshape(N, WINDOW, N_FEATS)
-        self.y = torch.tensor(df["target"].values).reshape(N, 1)
+        X = df.iloc[:, :-1].values
+        self.X = torch.tensor(X).reshape(X.shape[0], WINDOW, N_FEATS)
+        self.y = torch.tensor(df["target"].values).reshape(X.shape[0], 1)
+    def __len__(self): return len(self.X)
+    def __getitem__(self, i): return self.X[i], self.y[i]
 
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx: int):
-        return self.X[idx], self.y[idx]
-
-
-def _load_retrain_count() -> int:
-    if not os.path.exists(RETRAIN_COUNT_FILE):
-        return 0
-    try:
-        return int(open(RETRAIN_COUNT_FILE, "r").read().strip() or "0")
-    except Exception:
-        return 0
-
-
-def _save_retrain_count(n: int) -> None:
-    with open(RETRAIN_COUNT_FILE, "w") as f:
-        f.write(str(n))
-
-
-def get_reason_and_clear_flag() -> str:
-    """
-    Checks both the local file and the Go Event Queue for a retrain signal.
-    """
-    reason = "unknown"
-    found = False
-
-    # 1. Legacy: Check File
-    if os.path.exists(FLAG):
-        txt = open(FLAG, "r").read().strip()
-        os.remove(FLAG)
-        if txt.startswith("drift"):
-            reason = "drift"
-        elif txt.startswith("schedule"):
-            reason = "schedule"
-        found = True
-        print(f"[trainer] found flag file: {reason}")
-
-    # 2. Modern: Check Queue (if enabled)
-    # Note: we check queue even if found via file to 'drain' it, or prioritize file. 
-    # For simplicity, if file found, we skip queue to avoid double train immediately.
-    if QUEUE_ENABLED and not found:
-        try:
-            resp = requests.get(f"{QUEUE_URL}/subscribe", timeout=2)
-            if resp.status_code == 200:
-                data = resp.json()
-                event_msg = data.get("event", "")
-                if "drift" in event_msg:
-                    reason = "drift"
-                elif "schedule" in event_msg:
-                    reason = "schedule"
-                found = True
-                print(f"[trainer] received event from queue: {event_msg}")
-        except Exception as e:
-            # Log but don't crash, fallback to file next loop
-            print(f"[trainer] queue check failed: {e}")
-
-    if not found:
-        return "none" # Signal caller to skip
-
-    return reason
-
-
-def train():
-    rsn = get_reason_and_clear_flag()
-    if rsn == "none":
-        # No work to do
-        return
-
+def train_model(reason: str):
+    print(f"[trainer] Starting training... Reason: {reason}")
     mlflow.set_experiment("AeroCast-GRU")
-    mlflow.pytorch.autolog(log_models=False)
-
-    ds = TSDataset(CSV)
-    loader = DataLoader(ds, batch_size=2, shuffle=True)
+    
+    try:
+        ds = TSDataset(CSV)
+        loader = DataLoader(ds, batch_size=16, shuffle=True)
+    except Exception as e:
+        print(f"[trainer] Failed to load data: {e}")
+        return
 
     model = GRUWeatherForecaster(input_dim=N_FEATS, hidden_dim=16, output_dim=1)
     opt = torch.optim.Adam(model.parameters(), lr=0.01)
-    lossf = nn.MSELoss()
+    loss_fn = nn.MSELoss()
 
-    t0 = time.perf_counter()
     with mlflow.start_run() as run:
-        mlflow.set_tag("run_reason", rsn)
-        mlflow.set_tag("source_layer", "silver")
-        mlflow.log_param("input_dim", N_FEATS)
-        mlflow.log_param("window", WINDOW)
-
-        for epoch in range(30):
+        mlflow.set_tag("reason", reason)
+        
+        # Training Loop
+        for epoch in range(15): # Fast training for demo
             model.train()
-            tot = 0.0
             for X, y in loader:
                 opt.zero_grad()
-                out = model(X)
-                loss = lossf(out, y)
-                loss.backward()
+                loss_fn(model(X), y).backward()
                 opt.step()
-                tot += loss.item()
-            epoch_loss = tot / len(loader)
-            mlflow.log_metric("loss", epoch_loss, step=epoch)
-            LOSS_GAUGE.labels(str(epoch), rsn).set(epoch_loss)
-            try:
-                push_to_gateway(PUSHGATEWAY_HOST, job="aerocast_training", registry=registry)
-            except Exception:
-                pass
-
+        
+        # Save Artifacts
         model.eval()
-        with torch.no_grad():
-            preds = model(ds.X).numpy()
-            targets = ds.y.numpy()
-        rmse = float(((preds - targets) ** 2).mean() ** 0.5)
-        mlflow.log_metric("rmse", rmse)
+        os.makedirs(f"{ROOT}/artifacts", exist_ok=True)
+        torch.save(model.state_dict(), f"{ROOT}/artifacts/gru_weather_forecaster.pt")
+        
+        # Log to MLflow
+        try:
+            sample = next(iter(loader))[0]
+            sig = infer_signature(sample.numpy(), model(sample).detach().numpy())
+            mlflow.pytorch.log_model(model, "model", signature=sig)
+            mlflow.register_model(f"runs:/{run.info.run_id}/model", MODEL_NAME)
+        except Exception as e:
+            print(f"[trainer] MLflow logging warning: {e}")
 
-        os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
-        torch.save(model.state_dict(), os.path.join(ROOT, "artifacts", "gru_weather_forecaster.pt"))
-
-        X_sample, _ = next(iter(loader))
-        signature = infer_signature(
-            X_sample.numpy(), model(X_sample).detach().numpy()
-        )
-        mlflow.pytorch.log_model(
-            model, "model", input_example=X_sample.numpy(), signature=signature
-        )
-        mlflow.register_model(
-            f"runs:/{run.info.run_id}/model",
-            MODEL_NAME,
-        )
-
-    dur = time.perf_counter() - t0
-
-    now = datetime.datetime.utcnow()
-    with open(LAST_RETRAIN_FILE, "w") as f:
-        f.write(now.replace(tzinfo=datetime.timezone.utc).isoformat())
-
-    retrain_count = _load_retrain_count()
-    if rsn in ("drift", "schedule"):
-        retrain_count += 1
-        _save_retrain_count(retrain_count)
-        RETRAIN_TOTAL.inc()
-
-    RETRAIN_COUNT_G.set(retrain_count)
-    LAST_RETRAIN_TS.set(now.timestamp())
+    # Metrics
     try:
-        push_to_gateway(PUSHGATEWAY_HOST, job="aerocast_training", registry=registry)
-    except Exception:
-        pass
+        RETRAIN_COUNT.inc()
+        push_to_gateway(PUSHGATEWAY, job="aerocast_trainer", registry=registry)
+    except: pass
+    
+    print(f"[trainer] Training complete. Artifact updated.")
 
-    print(f"[train] done. reason={rsn} duration={dur:.2f}s retrain_count={retrain_count}")
+def run_daemon():
+    # 1. Initial Training (Ensure model exists on startup)
+    print("[trainer] performing initial cold-start training...")
+    train_model("initial_startup")
 
+    # 2. Event Loop
+    print(f"[trainer] entering event loop, listening to {QUEUE_URL}...")
+    while True:
+        try:
+            resp = requests.get(f"{QUEUE_URL}/subscribe", timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                event = data.get("event", "unknown")
+                print(f"[trainer] Received event: {event}")
+                train_model(event)
+            elif resp.status_code == 204:
+                time.sleep(1) # Queue empty, brief pause
+            else:
+                print(f"[trainer] queue error: {resp.status_code}")
+                time.sleep(5)
+        except Exception as e:
+            print(f"[trainer] connection error: {e}")
+            time.sleep(5)
 
 if __name__ == "__main__":
-    train()
+    run_daemon()
