@@ -2,13 +2,13 @@ namespace: aerocast
 
 images:
   api:
-    # you will push: ghcr.io/mdgolammafuz/aerocast-api:latest
+    # we will push: ghcr.io/mdgolammafuz/aerocast-api:latest
     repository: ghcr.io/mdgolammafuz/aerocast-api
     tag: latest
     pullPolicy: IfNotPresent
 
   worker:
-    # you will push: ghcr.io/mdgolammafuz/aerocast-worker:latest
+    # we will push: ghcr.io/mdgolammafuz/aerocast-worker:latest
     repository: ghcr.io/mdgolammafuz/aerocast-worker
     tag: latest
     pullPolicy: IfNotPresent
@@ -28,10 +28,29 @@ images:
     tag: latest
     pullPolicy: IfNotPresent
 
+# --- NEW: Go Queue Configuration ---
+queue:
+  enabled: true
+  image:
+    repository: ghcr.io/mdgolammafuz/aerocast-queue
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 8081
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
 prometheus:
   scrapeInterval: 5s
   apiTarget: aerocast-api.aerocast.svc.cluster.local:8000
   pushgatewayTarget: aerocast-pushgateway.aerocast.svc.cluster.local:9091
+  # --- NEW: Target for Queue ---
+  queueTarget: aerocast-queue.aerocast.svc.cluster.local:8081
 
 grafana:
   adminUser: admin

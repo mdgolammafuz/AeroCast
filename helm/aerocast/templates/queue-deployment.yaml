@@ -1,0 +1,33 @@
+{{- if .Values.queue.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-queue
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: aerocast-queue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aerocast-queue
+  template:
+    metadata:
+      labels:
+        app: aerocast-queue
+    spec:
+      containers:
+        - name: queue
+          image: "{{ .Values.queue.image.repository }}:{{ .Values.queue.image.tag }}"
+          imagePullPolicy: {{ .Values.queue.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.queue.service.port }}
+          resources:
+            {{- toYaml .Values.queue.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: {{ .Values.queue.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+{{- end }}

@@ -83,7 +83,7 @@ spec:
                 echo 'waiting for API...';
                 sleep 2;
               done;
-              python streaming/client/live_predictor_feeder.py
+              python streaming/client/live_predictor_feeder_sim.py
 
         # 4) Drift detector ----------------------------------------------
         - name: drift
@@ -99,6 +99,11 @@ spec:
           env:
             - name: PUSHGATEWAY_HOST
               value: localhost:9091
+            # --- NEW QUEUE CONFIG ---
+            - name: QUEUE_ENABLED
+              value: "1"
+            - name: QUEUE_URL
+              value: "http://{{ .Release.Name }}-queue:{{ .Values.queue.service.port }}"
           command: ["/bin/sh","-c"]
           args:
             - >
@@ -126,7 +131,13 @@ spec:
               value: localhost:9091
             - name: TRAIN_COOLDOWN
               value: "{{ .Values.trainer.cooldownSeconds }}"
+            # --- NEW QUEUE CONFIG ---
+            - name: QUEUE_ENABLED
+              value: "1"
+            - name: QUEUE_URL
+              value: "http://{{ .Release.Name }}-queue:{{ .Values.queue.service.port }}"
           command: ["/bin/sh","-c"]
+          # Note: Using sim trainer as default per your request
           args:
             - >
               python data/generate_training_data.py || true;
@@ -134,13 +145,4 @@ spec:
               touch /app/state/last_retrain.txt &&
               ln -sf /app/state/retrain.flag /app/retrain.flag &&
               ln -sf /app/state/last_retrain.txt /app/last_retrain.txt &&
-              while true; do
-                NOW=$(date +%s);
-                LAST=0;
-                [ -f /app/state/last_train_ts ] && LAST=$(cat /app/state/last_train_ts || echo 0);
-                COOLDOWN=${TRAIN_COOLDOWN:-60};
-                if [ -f /app/retrain.flag ] && [ $((NOW - LAST)) -ge $COOLDOWN ]; then
-                  python training/mlflow_gru_train.py && echo $NOW > /app/state/last_train_ts;
-                fi;
-                sleep 5;
-              done
+              python training/mlflow_gru_train_sim.py

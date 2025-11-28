@@ -17,6 +17,11 @@ data:
         static_configs:
           - targets: ['{{ .Values.prometheus.pushgatewayTarget }}']
 
+      # --- NEW: Scrape the Go Queue Microservice ---
+      - job_name: 'aerocast-queue'
+        static_configs:
+          - targets: ['{{ .Values.prometheus.queueTarget }}']
+
       - job_name: 'prometheus'
         static_configs:
           - targets: ['localhost:9090']
