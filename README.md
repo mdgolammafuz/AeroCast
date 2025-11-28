@@ -564,6 +564,9 @@ After that, either copy to the main CSV or call the sim trainer.
   terraform init
   terraform apply
   ```
+**Successful Provisioning:**
+![Terraform Success Output](docs/terraform_success.png)
+
 - if the release already exists, Terraform will recognize it and update in place; timeouts were increased, and `wait = false` was used to avoid long blocking applies on local clusters.
 
 ---
