@@ -21,14 +21,13 @@ provider "helm" {
   }
 }
 
-# namespace already created manually / by helm:
-# we just tell helm to use it, not create it
 resource "helm_release" "aerocast" {
-  name       = "aerocast"
-  chart      = "../helm/aerocast"
-  namespace  = "aerocast"
-  create_namespace = false
-  # don’t block forever in local/kind
+  name             = "aerocast"
+  chart            = "../helm/aerocast"
+  namespace        = "aerocast"
+  create_namespace = true
+  
+  # Don't block forever in local/kind if pods take time to pull
   wait    = false
   timeout = 600
 }
