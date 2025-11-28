@@ -1,4 +1,7 @@
 # AeroCast
+
+[![ci](https://github.com/mdgolammafuz/aeroCast/actions/workflows/ci.yml/badge.svg)](https://github.com/mdgolammafuz/aeroCast/actions/workflows/ci.yml)
+
 AeroCast is a real-time forecasting pipeline: streaming data in, landing it to storage, training a model, monitoring it for drift, and triggering retrains — with Prometheus/Grafana watching the whole loop. It includes the NOAA path (realistic, stable), the simulated path (drift-on-purpose), monitoring, and the self-heal loop.
 
 --
@@ -544,6 +547,10 @@ After that, either copy to the main CSV or call the sim trainer.
   ```
 
 ### 2. Kubernetes (Helm)
+
+For a complete, step-by-step guide on setting up the cluster, loading images, and running the self-healing experiment inside Kubernetes, please see the detailed runbook:
+
+**[docs/k8s_helm_terraform_runbook.md](docs/k8s_helm_terraform_runbook.md)**
 
 - chart is in `helm/aerocast`
 - install / upgrade:
