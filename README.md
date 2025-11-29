@@ -106,6 +106,7 @@ Open Prometheus → Targets → `pushgateway` should be UP.
 
 ## High-level architecture
 
+<!-- mermaid diagram -->
 ```mermaid
 flowchart TD
     subgraph Sources
@@ -158,7 +159,6 @@ flowchart TD
     D --> PG
     PG --> Prom --> G
 ```
-
 ---
 
 ## Business Impact (Projected)
@@ -426,6 +426,33 @@ The "Self-Healing" architecture (Go Queue + Daemons) is fully implemented for th
 
 ---
 
+## 4. Observability & Monitoring
+
+AeroCast includes a full observability stack to visualize the system's health and the self-healing loop in real-time.
+
+### MLOps Dashboard (Grafana)
+Visualizing the **Drift -> Queue -> Retrain** cycle.
+![Grafana Drift Dashboard](docs/images/grafana_drift_dashboard.png)
+- **Panel 1 (Drift Signal):** The red spike indicates the Drift Detector found an anomaly (Simulated Heatwave).
+- **Panel 2 (Event Queue):** The yellow bars show the Drift event being published to the Go Queue.
+- **Panel 3 (Self-Healing):** The counter increments when the Trainer successfully consumes the event and retrains the model.
+
+### System Health (Prometheus)
+All microservices (Python API, Go Queue, Pushgateway) are automatically discovered and scraped via Docker service discovery.
+![Prometheus Targets](docs/images/prometheus_targets.png)
+- **`aerocast-queue`:** The new Go microservice is active and exporting custom metrics (queue depth, event counts).
+
+### Model Registry (MLflow)
+Every retraining event is logged with parameters, metrics (RMSE), and artifacts.
+![MLflow Runs](docs/images/mlflow_runs.png)
+
+**How to view MLflow locally:**
+The `mlruns` directory is mounted to the host. You can inspect the full training history without entering Docker:
+```bash
+# Install mlflow locally if needed: pip install mlflow
+mlflow ui --backend-store-uri ./mlruns --port 5000
+
+---
 ## Self-healing loop
 
 ```mermaid
@@ -572,7 +599,7 @@ For a complete, step-by-step guide on setting up the cluster, loading images, an
   terraform apply
   ```
 **Successful Provisioning:**
-![Terraform Success Output](docs/terraform_success.png)
+![Terraform Success Output](docs/images/terraform_success.pngterraform_success.png)
 
 - if the release already exists, Terraform will recognize it and update in place; timeouts were increased, and `wait = false` was used to avoid long blocking applies on local clusters.
 
