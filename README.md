@@ -107,6 +107,7 @@ Open Prometheus → Targets → `pushgateway` should be UP.
 ## High-level architecture
 
 <!-- mermaid diagram -->
+
 ```mermaid
 flowchart TD
     subgraph Sources
@@ -447,13 +448,18 @@ Every retraining event is logged with parameters, metrics (RMSE), and artifacts.
 ![MLflow Runs](docs/images/mlflow_runs.png)
 
 **How to view MLflow locally:**
+
 The `mlruns` directory is mounted to the host. You can inspect the full training history without entering Docker:
 ```bash
+
 # Install mlflow locally if needed: pip install mlflow
 mlflow ui --backend-store-uri ./mlruns --port 5000
-
+```
 ---
+
 ## Self-healing loop
+
+<!-- mermaid diagram -->
 
 ```mermaid
 sequenceDiagram
@@ -593,13 +599,14 @@ For a complete, step-by-step guide on setting up the cluster, loading images, an
 - providers: `kubernetes` and `helm`
 - applies the local chart from `../helm/aerocast` into the `aerocast` namespace
 - in practice:
+
   ```bash
   cd infra
   terraform init
   terraform apply
   ```
 **Successful Provisioning:**
-![Terraform Success Output](docs/images/terraform_success.pngterraform_success.png)
+![Terraform Success Output](docs/images/terraform_success.png)
 
 - if the release already exists, Terraform will recognize it and update in place; timeouts were increased, and `wait = false` was used to avoid long blocking applies on local clusters.
 
