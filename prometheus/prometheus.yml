@@ -4,7 +4,14 @@ global:
 scrape_configs:
   - job_name: 'aerocast-fastapi'
     static_configs:
+      # Uses the container name defined in docker-compose
       - targets: ['aerocast-api:8000']
+
+  # --- NEW: Add the Go Queue here ---
+  - job_name: 'aerocast-queue'
+    static_configs:
+      - targets: ['aerocast-queue:8081']
+  # ----------------------------------
 
   - job_name: 'pushgateway'
     honor_labels: true
@@ -13,4 +20,4 @@ scrape_configs:
 
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['aerocast-prometheus:9090']
+      - targets: ['localhost:9090']
